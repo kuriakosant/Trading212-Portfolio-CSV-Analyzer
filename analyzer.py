@@ -300,3 +300,98 @@ def get_trades_table(df: pd.DataFrame) -> pd.DataFrame:
             "Price / share", "Currency (Price / share)",
             "Result", "Currency (Result)", "Total", "Currency (Total)"]
     return trades[[c for c in cols if c in trades.columns]].sort_values("Time", ascending=False).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Company deep-dive stats  (NEW)
+# ---------------------------------------------------------------------------
+
+def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a comprehensive per-company (ticker) breakdown DataFrame.
+
+    Columns:
+        Ticker, Name,
+        Buy Trades, Sell Trades, Total Trades,
+        Shares Bought, Shares Sold,
+        Volume Bought ($), Volume Sold ($),
+        Gross Profit ($), Gross Loss ($), Net P&L ($),
+        Win Rate (%), Winning Sells, Losing Sells, Break-Even Sells,
+        Best Trade ($), Worst Trade ($), Avg Win ($), Avg Loss ($),
+        First Trade, Last Trade, Days Active
+    """
+    trades = df[df["_category"].isin(["buy", "sell"])].copy()
+    if trades.empty:
+        return pd.DataFrame()
+
+    trades["Result_clean"] = trades["Result"].fillna(0)
+    trades["Total_abs"]    = trades["Total"].fillna(0).abs()
+    trades["Shares_abs"]   = trades["No. of shares"].fillna(0).abs()
+
+    rows = []
+    for (ticker, name), grp in trades.groupby(["Ticker", "Name"]):
+        buys  = grp[grp["_category"] == "buy"]
+        sells = grp[grp["_category"] == "sell"]
+
+        result_s = sells["Result_clean"]
+        wins      = result_s[result_s > 0]
+        losses    = result_s[result_s < 0]
+        breakeven = result_s[result_s == 0]
+
+        gross_profit = float(wins.sum())
+        gross_loss   = float(losses.sum())
+
+        first = grp["Time"].min()
+        last  = grp["Time"].max()
+        days  = (last - first).days if pd.notna(first) and pd.notna(last) else 0
+
+        rows.append({
+            "Ticker":          ticker,
+            "Name":            name,
+            "Buy Trades":      len(buys),
+            "Sell Trades":     len(sells),
+            "Total Trades":    len(grp),
+            "Shares Bought":   round(float(buys["Shares_abs"].sum()), 4),
+            "Shares Sold":     round(float(sells["Shares_abs"].sum()), 4),
+            "Vol Bought ($)":  round(float(buys["Total_abs"].sum()), 2),
+            "Vol Sold ($)":    round(float(sells["Total_abs"].sum()), 2),
+            "Gross Profit ($)":round(gross_profit, 2),
+            "Gross Loss ($)":  round(gross_loss, 2),
+            "Net P&L ($)":     round(gross_profit + gross_loss, 2),
+            "Win Rate (%)":    round(len(wins) / len(sells) * 100, 1) if len(sells) > 0 else 0.0,
+            "Winning Sells":   len(wins),
+            "Losing Sells":    len(losses),
+            "Break-Even":      len(breakeven),
+            "Best Trade ($)":  round(float(wins.max()), 2) if not wins.empty else 0.0,
+            "Worst Trade ($)": round(float(losses.min()), 2) if not losses.empty else 0.0,
+            "Avg Win ($)":     round(float(wins.mean()), 2) if not wins.empty else 0.0,
+            "Avg Loss ($)":    round(float(losses.mean()), 2) if not losses.empty else 0.0,
+            "First Trade":     first,
+            "Last Trade":      last,
+            "Days Active":     days,
+        })
+
+    result = pd.DataFrame(rows)
+    return result.sort_values("Net P&L ($)", ascending=False).reset_index(drop=True)
+
+
+def company_trade_history(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """
+    Return all buy/sell rows for a specific ticker with running cumulative P&L.
+    """
+    trades = df[df["_category"].isin(["buy", "sell"])].copy()
+    trades = trades[trades["Ticker"].fillna("") == ticker].sort_values("Time")
+    if trades.empty:
+        return pd.DataFrame()
+
+    trades["Result_clean"] = trades["Result"].fillna(0)
+    # Cumulative P&L only counts on sell events
+    sells_cum = trades["Result_clean"].where(trades["_category"] == "sell", 0).cumsum()
+    trades["Cumul P&L ($)"] = sells_cum.values
+
+    cols = ["Time", "Action", "No. of shares", "Price / share",
+            "Currency (Price / share)", "Result_clean", "Total", "Cumul P&L ($)"]
+    available = [c for c in cols if c in trades.columns]
+    out = trades[available].copy()
+    out = out.rename(columns={"Result_clean": "Trade P&L ($)"})
+    return out.reset_index(drop=True)

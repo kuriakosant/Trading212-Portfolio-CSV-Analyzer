@@ -562,7 +562,7 @@ st.markdown(cards_row([
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "💵 Dividends", "🏦 Interest", "🔄 Trades"]
+tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades"]
 if show_card_spending:
     tab_names.append("💳 Card Spending")
 
@@ -647,8 +647,127 @@ with tabs[2]:
                            f"tickers_{start_date}_{end_date}.csv", "text/csv")
 
 
-# ── Tab 4 : Dividends ────────────────────────────────────────────────────────
+# ── Tab 4 : Companies ───────────────────────────────────────────────────────
 with tabs[3]:
+    company_df = analyzer.company_detailed_stats(df)
+
+    if company_df.empty:
+        st.markdown("<div class='info-callout'>No trade data in the selected period.</div>",
+                    unsafe_allow_html=True)
+    else:
+        # ── Top summary cards ──────────────────────────────────
+        top_co    = company_df.iloc[0]
+        worst_co  = company_df.iloc[-1]
+        most_traded = company_df.loc[company_df["Total Trades"].idxmax()]
+        best_wr   = company_df.loc[company_df["Win Rate (%)"].idxmax()]
+
+        st.markdown(cards_row([
+            card("Companies Traded",   str(len(company_df)),
+                 "Unique tickers with trade activity", "🏢", "accent-blue"),
+            card("Best Performer",     top_co["Ticker"],
+                 f"Net: +${top_co['Net P&L ($)']:,.2f}", "🥇", "accent-green"),
+            card("Worst Performer",    worst_co["Ticker"],
+                 f"Net: -${abs(worst_co['Net P&L ($)']):,.2f}", "🥴", "accent-red"),
+            card("Most Traded",        most_traded["Ticker"],
+                 f"{most_traded['Total Trades']} total trades", "🔥", "accent-amber"),
+            card("Highest Win Rate",   best_wr["Ticker"],
+                 f"{best_wr['Win Rate (%)']:.1f}% win rate", "🎯", "accent-teal"),
+        ]), unsafe_allow_html=True)
+
+        # ── Overview charts row ────────────────────────────────
+        st.plotly_chart(charts.chart_company_pnl_bars(company_df), use_container_width=True)
+
+        st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True)
+
+        # ── Compare section ───────────────────────────────────
+        section("⚖️ Compare Companies")
+        all_tickers = company_df["Ticker"].tolist()
+        compare_sel = st.multiselect(
+            "Select 2–8 tickers to compare on the same chart",
+            options=all_tickers,
+            default=all_tickers[:min(4, len(all_tickers))],
+            max_selections=8,
+            label_visibility="collapsed",
+            placeholder="Choose tickers…",
+        )
+        if compare_sel:
+            st.plotly_chart(charts.chart_company_compare(df, compare_sel), use_container_width=True)
+
+        # ── Drill-down: single company ─────────────────────────
+        section("🔍 Company Drill-Down")
+        drill_ticker = st.selectbox(
+            "Select a company to see every individual trade",
+            options=all_tickers,
+            label_visibility="collapsed",
+        )
+        if drill_ticker:
+            # Stat cards for selected company
+            row = company_df[company_df["Ticker"] == drill_ticker].iloc[0]
+            net_acc = "accent-green" if row["Net P&L ($)"] >= 0 else "accent-red"
+            st.markdown(cards_row([
+                card("Net P&L",       f"${row['Net P&L ($)']:+,.2f}",
+                     "All sell trades", "📊", net_acc),
+                card("Gross Profit",  f"${row['Gross Profit ($)']:,.2f}",
+                     f"{row['Winning Sells']} winning sells", "💚", "accent-green"),
+                card("Gross Loss",    f"${abs(row['Gross Loss ($)']):,.2f}",
+                     f"{row['Losing Sells']} losing sells", "🔴", "accent-red"),
+                card("Win Rate",       f"{row['Win Rate (%)']:.1f}%",
+                     f"{row['Total Trades']} total trades", "🎯", "accent-blue"),
+                card("Best Trade",    f"${row['Best Trade ($)']:+,.2f}",
+                     "Single sell", "⭐", "accent-green"),
+                card("Worst Trade",   f"${row['Worst Trade ($)']:+,.2f}",
+                     "Single sell", "💥", "accent-red"),
+                card("Avg Win",       f"${row['Avg Win ($)']:+,.2f}",
+                     "Per winning sell", "📈", "accent-teal"),
+                card("Avg Loss",      f"${row['Avg Loss ($)']:+,.2f}",
+                     "Per losing sell", "📉", "accent-amber"),
+                card("Buy Trades",    str(int(row["Buy Trades"])),
+                     f"Vol: ${row['Vol Bought ($)']:,.0f}", "🛒", "accent-gray"),
+                card("Days Active",   str(int(row["Days Active"])),
+                     f"{row['First Trade'].strftime('%b %d') if pd.notna(row['First Trade']) else '—'} → {row['Last Trade'].strftime('%b %d, %Y') if pd.notna(row['Last Trade']) else '—'}",
+                     "📅", "accent-gray"),
+            ]), unsafe_allow_html=True)
+
+            history = analyzer.company_trade_history(df, drill_ticker)
+            st.plotly_chart(charts.chart_company_timeline(history, drill_ticker),
+                            use_container_width=True)
+
+            # Individual trade log
+            section(f"📋 {drill_ticker} — All Trades")
+            if not history.empty:
+                disp = history.copy()
+                disp["Time"] = disp["Time"].dt.strftime("%b %d, %Y %H:%M")
+                disp["Trade P&L ($)"] = disp["Trade P&L ($)"].apply(
+                    lambda v: f"${v:+,.2f}" if v != 0 else "—")
+                disp["Cumul P&L ($)"] = disp["Cumul P&L ($)"].apply(
+                    lambda v: f"${v:+,.2f}")
+                st.dataframe(disp, use_container_width=True, hide_index=True)
+                csv_co = history.to_csv(index=False).encode()
+                st.download_button(f"⬇️ Export {drill_ticker} trade log", csv_co,
+                                   f"{drill_ticker}_trades_{start_date}_{end_date}.csv", "text/csv")
+
+        # ── Full company stats table ───────────────────────────
+        section("📋 Full Company Stats Table")
+        sort_col = st.selectbox(
+            "Sort by",
+            ["Net P&L ($)", "Total Trades", "Gross Profit ($)", "Win Rate (%)",
+             "Vol Bought ($)", "Best Trade ($)"],
+            label_visibility="collapsed",
+        )
+        sort_asc = st.checkbox("Ascending", value=False)
+        display_co = company_df.copy().sort_values(sort_col, ascending=sort_asc)
+        # Format dates for display
+        for dc in ["First Trade", "Last Trade"]:
+            if dc in display_co.columns:
+                display_co[dc] = display_co[dc].dt.strftime("%b %d, %Y").fillna("—")
+        st.dataframe(display_co.reset_index(drop=True), use_container_width=True, hide_index=True)
+        csv_all_co = company_df.to_csv(index=False).encode()
+        st.download_button("⬇️ Export full company stats", csv_all_co,
+                           f"companies_{start_date}_{end_date}.csv", "text/csv")
+
+
+# ── Tab 5 : Dividends ────────────────────────────────────────────────────────
+with tabs[4]:
     if div_series.empty:
         st.markdown("<div class='info-callout'>No dividend payments found in the selected period.</div>",
                     unsafe_allow_html=True)
@@ -677,8 +796,8 @@ with tabs[3]:
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
 
-# ── Tab 5 : Interest ─────────────────────────────────────────────────────────
-with tabs[4]:
+# ── Tab 6 : Interest ─────────────────────────────────────────────────────────
+with tabs[5]:
     eur_tot = summary["interest_eur"]
     usd_tot = summary.get("interest_usd", 0)
 
@@ -709,8 +828,8 @@ with tabs[4]:
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
 
-# ── Tab 6 : Trades ───────────────────────────────────────────────────────────
-with tabs[5]:
+# ── Tab 7 : Trades ───────────────────────────────────────────────────────────
+with tabs[6]:
     trades_df = analyzer.get_trades_table(df)
 
     if trades_df.empty:
@@ -746,9 +865,9 @@ with tabs[5]:
                            f"trades_{start_date}_{end_date}.csv", "text/csv")
 
 
-# ── Tab 7 : Card Spending (optional) ─────────────────────────────────────────
+# ── Tab 8 : Card Spending (optional) ─────────────────────────────────────────
 if show_card_spending:
-    with tabs[6]:
+    with tabs[7]:
         card_df = df[df["_category"] == "card_debit"][
             ["Time", "Total", "Currency (Total)", "Merchant name", "Merchant category"]
         ].copy()

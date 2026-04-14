@@ -459,7 +459,7 @@ def chart_income_pie(summary: dict) -> go.Figure:
         )],
         showlegend=True,
         legend=dict(orientation="v", x=1.02, y=0.5,
-                    font=dict(size=11), bgcolor="transparent"),
+                    font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
     )
     return fig
 
@@ -498,4 +498,232 @@ def chart_deposits_vs_pnl(df: pd.DataFrame) -> go.Figure:
         hovertemplate="<b>%{x}</b><br>Trade P&L: <b>$%{y:+,.2f}</b><extra></extra>",
     ))
 
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 8. Company comparison — full horizontal bar (all companies)
+# ---------------------------------------------------------------------------
+
+def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
+    """
+    Full sorted horizontal bar chart of every company's Net P&L.
+    Color: green if positive, red if negative.
+    Hover: full stats.
+    """
+    if company_df.empty:
+        return _empty("No trade data in selected period")
+
+    df = company_df.sort_values("Net P&L ($)")
+    colors = [C_GREEN if v >= 0 else C_RED for v in df["Net P&L ($)"]]
+
+    fig = _fig("🏢 Net P&L by Company", height=max(380, len(df) * 36))
+
+    fig.add_trace(go.Bar(
+        x=df["Net P&L ($)"],
+        y=df["Ticker"],
+        orientation="h",
+        marker_color=colors,
+        marker_line_width=0,
+        customdata=df[["Gross Profit ($)", "Gross Loss ($)", "Total Trades",
+                        "Win Rate (%)", "Best Trade ($)", "Worst Trade ($)"]].values,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "──────────────────────<br>"
+            "Net P&L       : <b>$%{x:+,.2f}</b><br>"
+            "Gross Profit  : <b style='color:#22c55e'>$%{customdata[0]:,.2f}</b><br>"
+            "Gross Loss    : <b style='color:#f43f5e'>$%{customdata[1]:,.2f}</b><br>"
+            "Total Trades  : %{customdata[2]}<br>"
+            "Win Rate      : %{customdata[3]}%<br>"
+            "Best Trade    : $%{customdata[4]:+,.2f}<br>"
+            "Worst Trade   : $%{customdata[5]:+,.2f}"
+            "<extra></extra>"
+        ),
+        text=[f"${v:+,.2f}" for v in df["Net P&L ($)"]],
+        textposition="outside",
+        textfont=dict(size=10, color=colors),
+    ))
+
+    _add_zero_line(fig, axis="x")
+    fig.update_xaxes(title_text="Net P&L ($)")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 9. Company bubble chart  (trades vs P&L, sized by volume)
+# ---------------------------------------------------------------------------
+
+def chart_company_bubble(company_df: pd.DataFrame) -> go.Figure:
+    """
+    Scatter/bubble chart:
+      X = Total Trades
+      Y = Net P&L ($)
+      Size = Vol Bought ($)  (normalized)
+      Color = Win Rate (%)
+    """
+    if company_df.empty:
+        return _empty("No trade data in selected period")
+
+    df = company_df.copy()
+    # Normalize bubble size
+    vol_max = df["Vol Bought ($)"].max()
+    if vol_max > 0:
+        df["_size"] = (df["Vol Bought ($)"] / vol_max * 50 + 8).clip(upper=60)
+    else:
+        df["_size"] = 12
+
+    colors = [C_GREEN if v >= 0 else C_RED for v in df["Net P&L ($)"]]
+
+    fig = _fig("📊 Trades vs P&L (bubble size = volume bought)", height=480)
+
+    fig.add_trace(go.Scatter(
+        x=df["Total Trades"],
+        y=df["Net P&L ($)"],
+        mode="markers+text",
+        text=df["Ticker"],
+        textposition="top center",
+        textfont=dict(size=10, color=C_MUTED),
+        marker=dict(
+            size=df["_size"],
+            color=df["Win Rate (%)"],
+            colorscale=[[0, C_RED], [0.5, C_AMBER], [1, C_GREEN]],
+            showscale=True,
+            colorbar=dict(
+                title=dict(text="Win Rate %", font=dict(color=C_MUTED, size=11)),
+                tickfont=dict(color=C_MUTED, size=10),
+                bgcolor="rgba(0,0,0,0)",
+                bordercolor=C_BORDER,
+            ),
+            line=dict(color=C_BG, width=1.5),
+        ),
+        customdata=df[["Name", "Net P&L ($)", "Win Rate (%)",
+                        "Vol Bought ($)", "Best Trade ($)", "Worst Trade ($)"]].values,
+        hovertemplate=(
+            "<b>%{text}</b> — %{customdata[0]}<br>"
+            "──────────────────────<br>"
+            "Total Trades : %{x}<br>"
+            "Net P&L      : <b>$%{customdata[1]:+,.2f}</b><br>"
+            "Win Rate     : %{customdata[2]}%<br>"
+            "Vol Bought   : $%{customdata[3]:,.0f}<br>"
+            "Best Trade   : $%{customdata[4]:+,.2f}<br>"
+            "Worst Trade  : $%{customdata[5]:+,.2f}"
+            "<extra></extra>"
+        ),
+    ))
+
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
+    fig.update_xaxes(title_text="Total Trades (buys + sells)")
+    fig.update_yaxes(title_text="Net P&L ($)")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 10. Single company cumulative trade P&L timeline
+# ---------------------------------------------------------------------------
+
+def chart_company_timeline(history_df: pd.DataFrame, ticker: str) -> go.Figure:
+    """
+    Scatter + step line showing every trade for one company.
+    Sells: colored green/red by P&L.  Buys: small grey dots.
+    Step line shows running cumulative P&L from sells.
+    """
+    if history_df.empty:
+        return _empty(f"No trade history for {ticker}")
+
+    fig = _fig(f"📉 {ticker} — Individual Trade Timeline", height=440)
+
+    buys  = history_df[history_df["Action"].str.lower().str.startswith("market buy") |
+                        history_df["Action"].str.lower().str.startswith("limit buy")]
+    sells = history_df[history_df["Action"].str.lower().str.startswith("market sell") |
+                        history_df["Action"].str.lower().str.startswith("limit sell")]
+
+    # Cumulative P&L step line
+    fig.add_trace(go.Scatter(
+        x=history_df["Time"],
+        y=history_df["Cumul P&L ($)"],
+        mode="lines",
+        name="Cumul P&L",
+        line=dict(color=C_BLUE, width=2, shape="hv", dash="dot"),
+        hovertemplate="<b>%{x|%b %d, %Y %H:%M}</b><br>Running P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+    ))
+
+    # Buy markers
+    if not buys.empty:
+        fig.add_trace(go.Scatter(
+            x=buys["Time"],
+            y=buys["Cumul P&L ($)"],
+            mode="markers",
+            name="Buy",
+            marker=dict(size=8, color=C_MUTED, symbol="triangle-up",
+                        line=dict(color=C_BG, width=1)),
+            customdata=buys[["No. of shares", "Price / share", "Total"]].values,
+            hovertemplate=(
+                "<b>BUY</b> — %{x|%b %d, %Y %H:%M}<br>"
+                "Shares: %{customdata[0]:.4f}  @  $%{customdata[1]:.2f}<br>"
+                "Total:  $%{customdata[2]:,.2f}<extra></extra>"
+            ),
+        ))
+
+    # Sell markers — colored by P&L
+    if not sells.empty:
+        sell_colors = [C_GREEN if v >= 0 else C_RED for v in sells["Trade P&L ($)"]]
+        fig.add_trace(go.Scatter(
+            x=sells["Time"],
+            y=sells["Cumul P&L ($)"],
+            mode="markers",
+            name="Sell",
+            marker=dict(size=10, color=sell_colors, symbol="triangle-down",
+                        line=dict(color=C_BG, width=1.5)),
+            customdata=sells[["No. of shares", "Price / share", "Trade P&L ($)", "Total"]].values,
+            hovertemplate=(
+                "<b>SELL</b> — %{x|%b %d, %Y %H:%M}<br>"
+                "Shares: %{customdata[0]:.4f}  @  $%{customdata[1]:.2f}<br>"
+                "Trade P&L : <b>$%{customdata[2]:+,.2f}</b><br>"
+                "Total     : $%{customdata[3]:,.2f}<extra></extra>"
+            ),
+        ))
+
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
+    fig.update_yaxes(title_text="Cumulative P&L ($)")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 11. Multi-company comparison — overlaid cumulative P&L lines
+# ---------------------------------------------------------------------------
+
+def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
+    """
+    Overlaid cumulative P&L lines for multiple selected tickers.
+    Each ticker gets a distinct color from the palette.
+    """
+    if not tickers or df.empty:
+        return _empty("Select at least one company to compare")
+
+    palette = [C_BLUE, C_GREEN, C_AMBER, C_PURPLE, C_TEAL, "#f472b6", "#fb923c", C_RED]
+    fig = _fig("⚖️ Multi-Company P&L Comparison", height=420)
+
+    sells = df[df["_category"] == "sell"].copy()
+    all_dates = pd.date_range(df["Time"].min().date(), df["Time"].max().date(), freq="D")
+
+    for i, ticker in enumerate(tickers[:8]):
+        t_sells = sells[sells["Ticker"] == ticker].copy()
+        if t_sells.empty:
+            continue
+        t_sells["Date"] = t_sells["Time"].dt.date
+        daily = t_sells.groupby("Date")["Result"].sum().reindex(all_dates.date, fill_value=0).cumsum()
+
+        col = palette[i % len(palette)]
+        fig.add_trace(go.Scatter(
+            x=daily.index.astype(str),
+            y=daily.values,
+            mode="lines",
+            name=ticker,
+            line=dict(color=col, width=2.5, shape="spline", smoothing=0.3),
+            hovertemplate=f"<b>{ticker}</b> — %{{x}}<br>Cumul P&L: <b>${{y:+,.2f}}</b><extra></extra>",
+        ))
+
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
+    fig.update_yaxes(title_text="Cumulative P&L ($)")
+    fig.update_xaxes(title_text="Date")
     return fig
