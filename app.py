@@ -1,6 +1,6 @@
 """
 app.py — Trading212 Portfolio CSV Analyzer
-Streamlit app for analyzing Trading212 CSV exports.
+Premium dark Streamlit interface.
 """
 
 import streamlit as st
@@ -15,135 +15,325 @@ import charts
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Trading212 Portfolio Analyzer",
+    page_title="T212 Portfolio Analyzer",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Custom CSS — premium dark theme
+# Premium CSS
 # ---------------------------------------------------------------------------
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, sans-serif !important;
-    }
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
+.stApp { background: #080910 !important; }
+.main .block-container { padding: 2rem 2rem 4rem !important; max-width: 1600px; }
 
-    .stApp {
-        background: #0e1117;
-    }
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {
+    background: #0d0e1a !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
+section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
-    section[data-testid="stSidebar"] {
-        background: #13141a;
-        border-right: 1px solid rgba(255,255,255,0.07);
-    }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
 
-    /* Metric cards */
-    .metric-card {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 20px 22px;
-        margin-bottom: 10px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .metric-label {
-        font-size: 12px;
-        font-weight: 500;
-        color: rgba(255,255,255,0.45);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 6px;
-    }
-    .metric-value {
-        font-size: 28px;
-        font-weight: 700;
-        line-height: 1.1;
-    }
-    .metric-sub {
-        font-size: 12px;
-        color: rgba(255,255,255,0.35);
-        margin-top: 4px;
-    }
-    .color-profit  { color: #00e676; }
-    .color-loss    { color: #ff1744; }
-    .color-neutral { color: #29b6f6; }
-    .color-divid   { color: #ce93d8; }
-    .color-inter   { color: #80cbc4; }
-    .color-deposit { color: #ffd54f; }
-    .color-white   { color: #e0e0e0; }
+/* ── Hero header ── */
+.hero {
+    background: linear-gradient(135deg, #0f0c29, #1a0533, #0d0e1a);
+    border: 1px solid rgba(167,139,250,0.15);
+    border-radius: 20px;
+    padding: 2rem 2.4rem;
+    margin-bottom: 1.8rem;
+    position: relative;
+    overflow: hidden;
+}
+.hero::before {
+    content: "";
+    position: absolute; top: -60px; right: -60px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(167,139,250,0.18) 0%, transparent 70%);
+    pointer-events: none;
+}
+.hero::after {
+    content: "";
+    position: absolute; bottom: -80px; left: 30%;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(56,189,248,0.1) 0%, transparent 70%);
+    pointer-events: none;
+}
+.hero-title {
+    font-size: 2.1rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #38bdf8, #22c55e);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.15;
+    margin: 0 0 0.35rem 0;
+}
+.hero-sub {
+    font-size: 0.92rem;
+    color: rgba(226,228,240,0.45);
+    margin: 0;
+    font-weight: 400;
+}
+.hero-badge {
+    display: inline-block;
+    background: rgba(167,139,250,0.15);
+    border: 1px solid rgba(167,139,250,0.3);
+    color: #a78bfa;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 99px;
+    margin-bottom: 0.75rem;
+}
 
-    /* Section headers */
-    .section-header {
-        font-size: 18px;
-        font-weight: 600;
-        color: #e0e0e0;
-        margin: 28px 0 14px 0;
-        padding-bottom: 8px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
+/* ── Section header ── */
+.section-hdr {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: rgba(226,228,240,0.35);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 2rem 0 0.9rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.section-hdr::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+}
 
-    /* Info banner */
-    .info-banner {
-        background: linear-gradient(135deg, #1a237e22, #4a148c22);
-        border: 1px solid rgba(124,77,255,0.3);
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 20px;
-        color: rgba(255,255,255,0.7);
-        font-size: 14px;
-    }
+/* ── Metric cards ── */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px;
+    margin-bottom: 0.5rem;
+}
+.card {
+    background: #11121e;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 1.1rem 1.2rem;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    cursor: default;
+}
+.card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 14px 14px 0 0;
+    background: var(--accent, rgba(167,139,250,0.5));
+}
+.card-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: rgba(226,228,240,0.38);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    margin-bottom: 0.5rem;
+}
+.card-value {
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--val-color, #e2e4f0);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.card-sub {
+    font-size: 0.72rem;
+    color: rgba(226,228,240,0.32);
+    margin-top: 0.4rem;
+    font-weight: 400;
+}
+.card-icon {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    font-size: 1.4rem;
+    opacity: 0.35;
+}
 
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: transparent;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-    .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        color: rgba(255,255,255,0.5);
-        border-radius: 8px 8px 0 0;
-        padding: 8px 18px;
-        font-weight: 500;
-    }
-    .stTabs [aria-selected="true"] {
-        background: rgba(124,77,255,0.15) !important;
-        color: #ce93d8 !important;
-        border-bottom: 2px solid #7c4dff;
-    }
+/* ── Accent color helpers ── */
+.accent-green  { --accent: rgba(34,197,94,0.6);  --val-color: #22c55e; }
+.accent-red    { --accent: rgba(244,63,94,0.6);  --val-color: #f43f5e; }
+.accent-blue   { --accent: rgba(56,189,248,0.6); --val-color: #38bdf8; }
+.accent-purple { --accent: rgba(167,139,250,0.6);--val-color: #a78bfa; }
+.accent-teal   { --accent: rgba(45,212,191,0.6); --val-color: #2dd4bf; }
+.accent-amber  { --accent: rgba(251,191,36,0.6); --val-color: #fbbf24; }
+.accent-gray   { --accent: rgba(226,228,240,0.2);--val-color: #e2e4f0; }
 
-    /* DataFrames */
-    .stDataFrame {
-        border: 1px solid rgba(255,255,255,0.07);
-        border-radius: 10px;
-        overflow: hidden;
-    }
+/* ── Upload zone ── */
+.upload-zone {
+    background: linear-gradient(135deg, #11121e, #0d0e1a);
+    border: 1.5px dashed rgba(167,139,250,0.25);
+    border-radius: 16px;
+    padding: 2.4rem 2rem;
+    text-align: center;
+    margin: 1rem 0;
+    transition: border-color 0.2s;
+}
+.upload-zone:hover { border-color: rgba(167,139,250,0.5); }
+.upload-title { font-size: 1.1rem; font-weight: 600; color: #e2e4f0; margin: 0.5rem 0 0.25rem; }
+.upload-sub { font-size: 0.82rem; color: rgba(226,228,240,0.4); }
 
-    div[data-testid="stMetric"] {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 10px;
-        padding: 14px;
-    }
+/* ── Frequency pill row ── */
+div[data-testid="stHorizontalBlock"] .stRadio > label { display: none; }
+.stRadio [data-testid="stMarkdownContainer"] p { display: none; }
 
-    /* Upload area */
-    [data-testid="stFileUploader"] {
-        border-radius: 12px;
-    }
+/* ── Date range badge ── */
+.date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(167,139,250,0.1);
+    border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 99px;
+    padding: 4px 14px;
+    font-size: 0.8rem;
+    color: rgba(226,228,240,0.6);
+    margin-bottom: 1.5rem;
+}
+.date-badge b { color: #a78bfa; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #0e1117; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+/* ── Tabs ── */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+    padding-bottom: 0;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: 8px 8px 0 0 !important;
+    color: rgba(226,228,240,0.4) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    padding: 8px 18px !important;
+    border: none !important;
+    transition: color 0.15s, background 0.15s;
+}
+.stTabs [data-baseweb="tab"]:hover {
+    color: rgba(226,228,240,0.75) !important;
+    background: rgba(255,255,255,0.04) !important;
+}
+.stTabs [aria-selected="true"] {
+    background: rgba(167,139,250,0.1) !important;
+    color: #a78bfa !important;
+    border-bottom: 2px solid #a78bfa !important;
+}
+
+/* ── DataFrames ── */
+.stDataFrame { border-radius: 12px; overflow: hidden; }
+iframe[title="st_aggrid_wrapper"] { border-radius: 12px; }
+
+/* ── Plotly charts ── */
+.js-plotly-plot { border-radius: 14px; }
+
+/* ── Info callout ── */
+.info-callout {
+    background: rgba(56,189,248,0.07);
+    border: 1px solid rgba(56,189,248,0.2);
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    color: rgba(226,228,240,0.65);
+    font-size: 0.84rem;
+    line-height: 1.6;
+    margin: 0.5rem 0 1rem 0;
+}
+.info-callout b { color: #38bdf8; }
+
+/* ── Sidebar labels ── */
+section[data-testid="stSidebar"] label {
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    color: rgba(226,228,240,0.45) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.07em !important;
+}
+section[data-testid="stSidebar"] .stSelectbox > div,
+section[data-testid="stSidebar"] .stDateInput > div {
+    background: rgba(255,255,255,0.04) !important;
+    border-color: rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+}
+
+/* ── Buttons ── */
+.stDownloadButton button {
+    background: rgba(167,139,250,0.12) !important;
+    border: 1px solid rgba(167,139,250,0.3) !important;
+    border-radius: 8px !important;
+    color: #a78bfa !important;
+    font-size: 0.83rem !important;
+    font-weight: 600 !important;
+    transition: all 0.15s !important;
+}
+.stDownloadButton button:hover {
+    background: rgba(167,139,250,0.22) !important;
+    border-color: rgba(167,139,250,0.5) !important;
+}
+
+/* ── Radio buttons (timeline selector) ── */
+.stRadio > div {
+    display: flex;
+    flex-direction: row !important;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.stRadio > div > label {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 99px !important;
+    padding: 5px 16px !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    color: rgba(226,228,240,0.55) !important;
+    cursor: pointer !important;
+    transition: all 0.15s;
+}
+.stRadio > div > label:hover {
+    border-color: rgba(167,139,250,0.4) !important;
+    color: rgba(226,228,240,0.85) !important;
+}
+.stRadio > div > label[data-selected="true"],
+.stRadio > div > label:has(input:checked) {
+    background: rgba(167,139,250,0.18) !important;
+    border-color: rgba(167,139,250,0.5) !important;
+    color: #a78bfa !important;
+}
+/* hide radio dots */
+.stRadio > div > label > div:first-child { display: none !important; }
+
+/* ── Animations ── */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.cards-grid { animation: fadeUp 0.4s ease; }
+.hero { animation: fadeUp 0.35s ease; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -152,25 +342,33 @@ st.markdown("""
 # Helpers
 # ---------------------------------------------------------------------------
 
-def metric_card(label: str, value: str, sub: str = "", color_class: str = "color-white") -> str:
+def card(label: str, value: str, sub: str = "", icon: str = "", accent: str = "accent-gray") -> str:
     return f"""
-    <div class="metric-card">
-        <div class="metric-label">{label}</div>
-        <div class="metric-value {color_class}">{value}</div>
-        {"<div class='metric-sub'>" + sub + "</div>" if sub else ""}
-    </div>
-    """
+    <div class="card {accent}">
+        {"<span class='card-icon'>" + icon + "</span>" if icon else ""}
+        <div class="card-label">{label}</div>
+        <div class="card-value">{value}</div>
+        {"<div class='card-sub'>" + sub + "</div>" if sub else ""}
+    </div>"""
 
 
-def fmt(value: float, prefix: str = "", decimals: int = 2) -> str:
-    if value >= 0:
-        return f"{prefix}{value:,.{decimals}f}"
-    return f"-{prefix}{abs(value):,.{decimals}f}"
+def cards_row(html_list: list) -> str:
+    return "<div class='cards-grid'>" + "".join(html_list) + "</div>"
 
 
-def fmt_signed(value: float, prefix: str = "$") -> str:
-    sign = "+" if value >= 0 else ""
-    return f"{sign}{prefix}{value:,.2f}"
+def fmt_usd(v: float, sign: bool = True) -> str:
+    if sign:
+        s = "+" if v >= 0 else "−"
+        return f"{s}${abs(v):,.2f}"
+    return f"${v:,.2f}"
+
+
+def fmt_eur(v: float, decimals: int = 2) -> str:
+    return f"€{v:,.{decimals}f}"
+
+
+def section(label: str) -> None:
+    st.markdown(f"<div class='section-hdr'><span>{label}</span></div>", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -178,392 +376,414 @@ def fmt_signed(value: float, prefix: str = "$") -> str:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("## 📈 Portfolio Analyzer")
-    st.markdown("---")
-
-    uploaded_files = st.file_uploader(
-        "Upload Trading212 CSV(s)",
-        type=["csv"],
-        accept_multiple_files=True,
-        help="Export from Trading212 → History → Download. You can upload multiple files (e.g. one per year).",
-    )
-
-    st.markdown("---")
-    st.markdown("### 📅 Date Range")
-
-    preset = st.selectbox(
-        "Quick Preset",
-        ["Custom", "This Month", "Last Month", "Last 3 Months", "This Year", "All Time"],
-        index=0,
-    )
-
-    today = date.today()
-
-    if preset == "This Month":
-        default_start = today.replace(day=1)
-        default_end = today
-    elif preset == "Last Month":
-        first_this = today.replace(day=1)
-        last_month_end = first_this - timedelta(days=1)
-        default_start = last_month_end.replace(day=1)
-        default_end = last_month_end
-    elif preset == "Last 3 Months":
-        default_start = (today - timedelta(days=90)).replace(day=1)
-        default_end = today
-    elif preset == "This Year":
-        default_start = today.replace(month=1, day=1)
-        default_end = today
-    else:  # Custom / All Time
-        default_start = date(2020, 1, 1)
-        default_end = today
-
-    start_date = st.date_input("Start Date", value=default_start)
-    end_date = st.date_input("End Date", value=default_end)
-
-    if start_date > end_date:
-        st.error("Start date must be before end date.")
-        st.stop()
-
-    st.markdown("---")
-    st.markdown("### ⚙️ Options")
-    show_card_spending = st.checkbox("Include card spending analysis", value=False)
-    show_raw = st.checkbox("Show raw data tab", value=True)
-
-    st.markdown("---")
-    st.markdown(
-        "<div style='color:rgba(255,255,255,0.3);font-size:11px;'>Trading212 Portfolio Analyzer<br>Supports multi-file uploads</div>",
-        unsafe_allow_html=True,
-    )
-
-# ---------------------------------------------------------------------------
-# Main content
-# ---------------------------------------------------------------------------
-
-st.markdown("""
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;">
-    <span style="font-size:42px">📈</span>
-    <div>
-        <h1 style="margin:0;font-size:32px;font-weight:700;background:linear-gradient(135deg,#7c4dff,#29b6f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-            Portfolio Analyzer
-        </h1>
-        <p style="margin:0;color:rgba(255,255,255,0.45);font-size:14px;">Trading212 CSV export analysis</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-if not uploaded_files:
     st.markdown("""
-    <div class="info-banner">
-        👋 <strong>Welcome!</strong> Upload one or more Trading212 CSV exports using the sidebar to get started.<br><br>
-        <strong>How to export:</strong> Open Trading212 → History → tap the download icon → select date range → export CSV.
-        You can upload multiple files (e.g. Jan–Apr 2026 + full year 2025) and they will be merged automatically.
+    <div style="padding:0 0 1rem 0;">
+        <div style="font-size:1.4rem;font-weight:800;
+            background:linear-gradient(135deg,#a78bfa,#38bdf8);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+            background-clip:text;margin-bottom:2px;">T212 Analyzer</div>
+        <div style="font-size:0.75rem;color:rgba(226,228,240,0.35);font-weight:400;">
+            Portfolio CSV Analysis Tool</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Demo columns
-    col1, col2, col3 = st.columns(3)
+    st.divider()
+
+    uploaded_files = st.file_uploader(
+        "UPLOAD CSV FILES",
+        type=["csv"],
+        accept_multiple_files=True,
+        help="Export from Trading212 → History → Download icon. Supports multiple files.",
+    )
+
+    st.divider()
+
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Date Range</div>", unsafe_allow_html=True)
+
+    preset = st.selectbox(
+        "Quick Preset",
+        ["Custom", "This Month", "Last Month", "Last 3 Months",
+         "Last 6 Months", "This Year", "All Time"],
+        label_visibility="collapsed",
+    )
+
+    today = date.today()
+    if preset == "This Month":
+        d_start, d_end = today.replace(day=1), today
+    elif preset == "Last Month":
+        first_this = today.replace(day=1)
+        last_end   = first_this - timedelta(days=1)
+        d_start, d_end = last_end.replace(day=1), last_end
+    elif preset == "Last 3 Months":
+        d_start, d_end = (today - timedelta(days=90)).replace(day=1), today
+    elif preset == "Last 6 Months":
+        d_start, d_end = (today - timedelta(days=182)).replace(day=1), today
+    elif preset == "This Year":
+        d_start, d_end = today.replace(month=1, day=1), today
+    else:
+        d_start, d_end = date(2020, 1, 1), today
+
+    col1, col2 = st.columns(2)
     with col1:
-        st.markdown(metric_card("Trade P&L", "—", "Sell result totals", "color-neutral"), unsafe_allow_html=True)
+        start_date = st.date_input("From", value=d_start, label_visibility="visible")
     with col2:
-        st.markdown(metric_card("Dividends", "—", "Net after withholding", "color-divid"), unsafe_allow_html=True)
-    with col3:
-        st.markdown(metric_card("Interest", "—", "Cash + lending interest", "color-inter"), unsafe_allow_html=True)
+        end_date = st.date_input("To", value=d_end, label_visibility="visible")
+
+    if start_date > end_date:
+        st.error("Start must be before end date.")
+        st.stop()
+
+    st.divider()
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Options</div>", unsafe_allow_html=True)
+    show_card_spending = st.checkbox("Card spending tab", value=False)
+
+    st.divider()
+    st.markdown(
+        "<div style='font-size:0.7rem;color:rgba(226,228,240,0.2);line-height:1.6;'>"
+        "CSV files are never stored or committed.<br>All analysis runs locally."
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hero header
+# ---------------------------------------------------------------------------
+
+st.markdown("""
+<div class="hero">
+    <div class="hero-badge">📈 Portfolio Analytics</div>
+    <h1 class="hero-title">Trading212 Portfolio Analyzer</h1>
+    <p class="hero-sub">Upload your CSV exports · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Empty state
+# ---------------------------------------------------------------------------
+
+if not uploaded_files:
+    st.markdown("""
+    <div class="upload-zone">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem;">📂</div>
+        <div class="upload-title">Upload your Trading212 CSV exports</div>
+        <div class="upload-sub">Go to Trading212 → History → Download icon → Export CSV<br>
+        You can upload multiple files (e.g. 2024 + 2025) and they'll be merged automatically.</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Preview skeleton cards
+    st.markdown(cards_row([
+        card("Total Profit", "—", "Profitable sell trades", "💚", "accent-green"),
+        card("Total Loss", "—", "Losing sell trades", "🔴", "accent-red"),
+        card("Net P&L", "—", "Profit minus loss", "📊", "accent-blue"),
+        card("Dividends", "—", "Net after withholding", "💵", "accent-purple"),
+        card("Interest", "—", "Cash + lending", "🏦", "accent-teal"),
+    ]), unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Load & filter data
+# Load & filter
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Parsing CSV files…")
+@st.cache_data(show_spinner=False)
 def load_data(files):
     return analyzer.load_csvs(files)
 
-
-with st.spinner("Loading data…"):
+with st.spinner("⚡ Parsing CSV files…"):
     df_all = load_data(uploaded_files)
 
-# Apply date filter
 df = analyzer.filter_by_date(df_all, start_date, end_date)
 
 if df.empty:
-    st.warning(f"No transactions found between **{start_date}** and **{end_date}**. Try adjusting the date range.")
+    st.warning(f"No transactions found between **{start_date}** and **{end_date}**.")
     st.stop()
 
-# Compute everything
-summary = analyzer.compute_summary(df)
-daily_pnl_df = analyzer.daily_cumulative_pnl(df)
-monthly_df = analyzer.monthly_summary(df)
-ticker_df = analyzer.ticker_pnl(df)
+# Pre-compute everything
+summary     = analyzer.compute_summary(df)
+monthly_df  = analyzer.monthly_summary(df)
+ticker_df   = analyzer.ticker_pnl(df)
+div_series  = analyzer.dividend_series(df)
+int_series  = analyzer.interest_series(df)
 
-# ---------------------------------------------------------------------------
-# Date range header
-# ---------------------------------------------------------------------------
-
+# Date badge
+days_in_range = (end_date - start_date).days + 1
 st.markdown(
-    f"<div style='color:rgba(255,255,255,0.4);font-size:13px;margin-bottom:20px;'>"
-    f"Showing data from <strong style='color:#ce93d8'>{start_date}</strong> to "
-    f"<strong style='color:#ce93d8'>{end_date}</strong> — "
-    f"<strong style='color:#e0e0e0'>{len(df):,}</strong> transactions</div>",
+    f"<div class='date-badge'>📅 <b>{start_date.strftime('%b %d, %Y')}</b>"
+    f" → <b>{end_date.strftime('%b %d, %Y')}</b>"
+    f" &nbsp;·&nbsp; {len(df):,} transactions &nbsp;·&nbsp; {days_in_range} days</div>",
     unsafe_allow_html=True,
 )
 
 # ---------------------------------------------------------------------------
-# Summary metric cards — Row 1: P&L
+# Metric cards — Row 1: P&L
 # ---------------------------------------------------------------------------
 
-st.markdown("<div class='section-header'>💹 Trading P&amp;L</div>", unsafe_allow_html=True)
+section("💹 Trading P&L")
 
-c1, c2, c3, c4, c5 = st.columns(5)
-with c1:
-    st.markdown(metric_card(
-        "Total Profit",
-        fmt_signed(summary["gross_profit"]),
-        f"{summary['n_winning_trades']} winning trades",
-        "color-profit",
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(metric_card(
-        "Total Loss",
-        fmt_signed(summary["gross_loss"]),
-        f"{summary['n_losing_trades']} losing trades",
-        "color-loss",
-    ), unsafe_allow_html=True)
-with c3:
-    net_color = "color-profit" if summary["net_pnl"] >= 0 else "color-loss"
-    st.markdown(metric_card(
-        "Net P&L",
-        fmt_signed(summary["net_pnl"]),
-        "Profit − Loss",
-        net_color,
-    ), unsafe_allow_html=True)
-with c4:
-    win_pct = f"{summary['win_rate']:.1f}% win rate"
-    st.markdown(metric_card(
-        "Total Sell Trades",
-        f"{summary['n_sells']}",
-        win_pct,
-        "color-neutral",
-    ), unsafe_allow_html=True)
-with c5:
-    st.markdown(metric_card(
-        "Total Buy Trades",
-        f"{summary['n_buys']}",
-        f"Volume: ${summary['total_buy_volume']:,.0f}",
-        "color-white",
-    ), unsafe_allow_html=True)
+net_accent = "accent-green" if summary["net_pnl"] >= 0 else "accent-red"
+st.markdown(cards_row([
+    card("Total Profit",  fmt_usd(summary["gross_profit"], False),
+         f"{summary['n_winning_trades']} winning trades", "💚", "accent-green"),
+    card("Total Loss",    fmt_usd(summary["gross_loss"], False),
+         f"{summary['n_losing_trades']} losing trades", "🔴", "accent-red"),
+    card("Net P&L",       fmt_usd(summary["net_pnl"]),
+         "Profit − Loss", "📈", net_accent),
+    card("Win Rate",      f"{summary['win_rate']:.1f}%",
+         f"{summary['n_sells']} total sell trades", "🎯", "accent-blue"),
+    card("Buy Trades",    str(summary["n_buys"]),
+         f"Volume: {fmt_usd(summary['total_buy_volume'], False)}", "🛒", "accent-gray"),
+]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Summary metric cards — Row 2: Income
+# Metric cards — Row 2: Income & cash
 # ---------------------------------------------------------------------------
 
-st.markdown("<div class='section-header'>💰 Passive Income &amp; Cash</div>", unsafe_allow_html=True)
+section("💰 Passive Income & Cash Flow")
 
-c1, c2, c3, c4, c5 = st.columns(5)
-with c1:
-    st.markdown(metric_card(
-        "Dividends (Net)",
-        f"€{summary['div_net_eur']:,.4f}",
-        f"Gross: €{summary['div_gross_eur']:,.4f}",
-        "color-divid",
-    ), unsafe_allow_html=True)
-with c2:
-    st.markdown(metric_card(
-        "Withholding Tax",
-        f"€{summary['div_withholding_eur']:,.4f}",
-        f"{summary['n_dividends']} dividend payments",
-        "color-loss",
-    ), unsafe_allow_html=True)
-with c3:
-    inter_total = summary["interest_eur"] + summary.get("interest_usd", 0)
-    st.markdown(metric_card(
-        "Interest on Cash",
-        f"€{summary['interest_eur']:,.4f}",
-        f"+ ${summary.get('interest_usd', 0):,.4f} USD · {summary['n_interest']} payments",
-        "color-inter",
-    ), unsafe_allow_html=True)
-with c4:
-    st.markdown(metric_card(
-        "Spending Cashback",
-        f"€{summary['cashback_eur']:,.4f}",
-        "Card rewards",
-        "color-deposit",
-    ), unsafe_allow_html=True)
-with c5:
-    net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
-    st.markdown(metric_card(
-        "Net Deposited",
-        f"€{net_deposited:,.2f}",
-        f"In: €{summary['total_deposited_eur']:,.2f} / Out: €{summary['total_withdrawn_eur']:,.2f}",
-        "color-white",
-    ), unsafe_allow_html=True)
+int_total = summary["interest_eur"] + summary.get("interest_usd", 0)
+net_dep   = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
+st.markdown(cards_row([
+    card("Dividends (Net)",   fmt_eur(summary["div_net_eur"], 4),
+         f"Gross: {fmt_eur(summary['div_gross_eur'], 4)}", "💵", "accent-purple"),
+    card("Withholding Tax",   fmt_eur(summary["div_withholding_eur"], 4),
+         f"{summary['n_dividends']} payments", "🏛️", "accent-red"),
+    card("Interest EUR",      fmt_eur(summary["interest_eur"], 4),
+         f"{summary['n_interest']} payments", "🏦", "accent-teal"),
+    card("Interest USD",      f"${summary.get('interest_usd',0):,.4f}",
+         "Lending + cash", "💲", "accent-amber"),
+    card("Cashback",          fmt_eur(summary["cashback_eur"], 4),
+         "Card rewards", "🎁", "accent-blue"),
+    card("Net Deposited",     fmt_eur(net_dep),
+         f"In: {fmt_eur(summary['total_deposited_eur'])} / Out: {fmt_eur(summary['total_withdrawn_eur'])}", "🏧", "accent-gray"),
+]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_labels = ["📈 Charts", "🔄 Trades", "💵 Dividends & Interest"]
-if show_raw:
-    tab_labels.append("📂 Raw Data")
+tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "💵 Dividends", "🏦 Interest", "🔄 Trades"]
+if show_card_spending:
+    tab_names.append("💳 Card Spending")
 
-tabs = st.tabs(tab_labels)
+tabs = st.tabs(tab_names)
 
-# ---- Tab 1: Charts ---------------------------------------------------------
+# ── Tab 1 : P&L Timeline ────────────────────────────────────────────────────
 with tabs[0]:
-    # Cumulative P&L
-    st.plotly_chart(charts.chart_cumulative_pnl(daily_pnl_df), use_container_width=True)
+    st.markdown("<div style='margin-bottom:0.6rem;'></div>", unsafe_allow_html=True)
+
+    freq_label = st.radio(
+        "Timeline resolution",
+        ["Daily", "Weekly", "Monthly", "Quarterly"],
+        index=1,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    freq_code  = analyzer.FREQ_MAP[freq_label]
+    timeline   = analyzer.pnl_timeline(df, freq_code)
+
+    st.plotly_chart(charts.chart_pnl_timeline(timeline, freq_label), use_container_width=True)
+
+    # Quick stats below chart
+    if not timeline.empty:
+        col1, col2, col3, col4 = st.columns(4)
+        best  = timeline.loc[timeline["Period P&L"].idxmax()]
+        worst = timeline.loc[timeline["Period P&L"].idxmin()]
+        with col1:
+            period_label = best["Period"].strftime("%b %d") if hasattr(best["Period"], "strftime") else str(best["Period"])
+            st.metric("Best Period", f"+${best['Period P&L']:,.2f}", period_label)
+        with col2:
+            period_label2 = worst["Period"].strftime("%b %d") if hasattr(worst["Period"], "strftime") else str(worst["Period"])
+            st.metric("Worst Period", f"-${abs(worst['Period P&L']):,.2f}", period_label2)
+        with col3:
+            active = int((timeline["Trades"] > 0).sum())
+            st.metric("Active Periods", active, f"of {len(timeline)} total")
+        with col4:
+            avg = timeline[timeline["Trades"] > 0]["Period P&L"].mean()
+            st.metric("Avg P&L / Period", f"${avg:+,.2f}", "active periods only")
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.plotly_chart(charts.chart_daily_pnl(daily_pnl_df), use_container_width=True)
-    with col_b:
         st.plotly_chart(charts.chart_income_pie(summary), use_container_width=True)
-
-    st.plotly_chart(charts.chart_monthly_summary(monthly_df), use_container_width=True)
-
-    col_c, col_d = st.columns([3, 2])
-    with col_c:
-        st.plotly_chart(charts.chart_top_tickers(ticker_df), use_container_width=True)
-    with col_d:
+    with col_b:
         st.plotly_chart(charts.chart_deposits_vs_pnl(df), use_container_width=True)
 
 
-# ---- Tab 2: Trades ---------------------------------------------------------
+# ── Tab 2 : Monthly summary ──────────────────────────────────────────────────
 with tabs[1]:
+    st.plotly_chart(charts.chart_monthly_summary(monthly_df), use_container_width=True)
+
+    if not monthly_df.empty:
+        section("Month-by-Month Details")
+        display = monthly_df.copy()
+        for col in ["Profit", "Loss", "Net P&L"]:
+            display[col] = display[col].apply(lambda v: f"${v:+,.2f}")
+        display["Dividends (EUR)"] = display["Dividends (EUR)"].apply(lambda v: f"€{v:.4f}")
+        display["Interest"] = display["Interest"].apply(lambda v: f"{v:.4f}")
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+
+# ── Tab 3 : Tickers ──────────────────────────────────────────────────────────
+with tabs[2]:
+    st.plotly_chart(charts.chart_top_tickers(ticker_df), use_container_width=True)
+
+    if not ticker_df.empty:
+        section("Full Ticker P&L Breakdown")
+        search = st.text_input("🔍 Filter ticker", placeholder="e.g. SOFI, WULF…",
+                               label_visibility="collapsed")
+        disp = ticker_df.copy()
+        if search:
+            disp = disp[disp["Ticker"].str.upper().str.contains(search.upper(), na=False) |
+                        disp["Name"].str.upper().str.contains(search.upper(), na=False)]
+
+        styled = disp.copy()
+        styled["Profit"]  = styled["Profit"].apply(lambda v: f"+${v:,.2f}")
+        styled["Loss"]    = styled["Loss"].apply(lambda v: f"-${abs(v):,.2f}")
+        styled["Net P&L"] = styled["Net P&L"].apply(lambda v: f"+${v:,.2f}" if v >= 0 else f"-${abs(v):,.2f}")
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        csv_b = disp.to_csv(index=False).encode()
+        st.download_button("⬇️ Export ticker breakdown", csv_b,
+                           f"tickers_{start_date}_{end_date}.csv", "text/csv")
+
+
+# ── Tab 4 : Dividends ────────────────────────────────────────────────────────
+with tabs[3]:
+    if div_series.empty:
+        st.markdown("<div class='info-callout'>No dividend payments found in the selected period.</div>",
+                    unsafe_allow_html=True)
+    else:
+        # Summary banner
+        total_div = summary["div_net_eur"]
+        wh        = summary["div_withholding_eur"]
+        st.markdown(cards_row([
+            card("Total Dividends (Net)", fmt_eur(total_div, 4),
+                 f"{summary['n_dividends']} payments", "💵", "accent-purple"),
+            card("Gross Dividends",       fmt_eur(summary['div_gross_eur'], 4),
+                 "Before withholding tax", "📊", "accent-blue"),
+            card("Withholding Tax",       fmt_eur(wh, 4),
+                 f"{(wh/summary['div_gross_eur']*100) if summary['div_gross_eur'] else 0:.1f}% of gross",
+                 "🏛️", "accent-red"),
+        ]), unsafe_allow_html=True)
+
+        st.plotly_chart(charts.chart_dividend_growth(div_series), use_container_width=True)
+
+        section("Individual Dividend Payments")
+        disp = div_series.copy()
+        disp["Net (EUR)"]         = disp["Net (EUR)"].apply(lambda v: f"€{v:.4f}")
+        disp["Withholding (EUR)"] = disp["Withholding (EUR)"].apply(lambda v: f"€{v:.4f}")
+        disp["Cumulative (EUR)"]  = disp["Cumulative (EUR)"].apply(lambda v: f"€{v:.4f}")
+        disp["Time"]              = disp["Time"].dt.strftime("%b %d, %Y %H:%M")
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+
+
+# ── Tab 5 : Interest ─────────────────────────────────────────────────────────
+with tabs[4]:
+    eur_tot = summary["interest_eur"]
+    usd_tot = summary.get("interest_usd", 0)
+
+    st.markdown(cards_row([
+        card("Total EUR Interest", fmt_eur(eur_tot, 4),
+             "Interest on cash + lending", "🏦", "accent-teal"),
+        card("Total USD Interest", f"${usd_tot:,.4f}",
+             "USD cash account interest", "💲", "accent-amber"),
+        card("Total Payments", str(summary["n_interest"]),
+             "Across all interest types", "📊", "accent-blue"),
+    ]), unsafe_allow_html=True)
+
+    if int_series.empty:
+        st.markdown("<div class='info-callout'>No interest payments found in the selected period.</div>",
+                    unsafe_allow_html=True)
+    else:
+        st.plotly_chart(charts.chart_interest_growth(int_series), use_container_width=True)
+
+        section("Interest Payment Log")
+        disp = int_series.copy()
+        disp["Amount"]   = disp.apply(
+            lambda r: f"€{r['Amount']:.4f}" if r["Currency"] == "EUR" else f"${r['Amount']:.4f}", axis=1)
+        disp["Cumulative EUR"] = disp["Cumulative EUR"].apply(
+            lambda v: f"€{v:.4f}" if pd.notna(v) else "—")
+        disp["Cumulative USD"] = disp["Cumulative USD"].apply(
+            lambda v: f"${v:.4f}" if pd.notna(v) else "—")
+        disp["Time"] = disp["Time"].dt.strftime("%b %d, %Y %H:%M")
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+
+
+# ── Tab 6 : Trades ───────────────────────────────────────────────────────────
+with tabs[5]:
     trades_df = analyzer.get_trades_table(df)
 
     if trades_df.empty:
-        st.info("No buy/sell transactions in the selected period.")
+        st.markdown("<div class='info-callout'>No buy/sell transactions in the selected period.</div>",
+                    unsafe_allow_html=True)
     else:
-        st.markdown(f"**{len(trades_df)} trade records** in period")
+        col_s, col_f = st.columns([3, 1])
+        with col_s:
+            search2 = st.text_input("🔍 Search ticker or name", placeholder="e.g. VST, Vistra…",
+                                    label_visibility="collapsed")
+        with col_f:
+            actions = sorted(trades_df["Action"].unique().tolist())
+            act_filter = st.multiselect("Action", options=actions,
+                                        placeholder="All actions", label_visibility="collapsed")
 
-        # Per-ticker breakdown first
-        if not ticker_df.empty:
-            st.markdown("<div class='section-header'>Per-Ticker P&L Summary</div>", unsafe_allow_html=True)
-
-            styled = ticker_df.copy()
-            styled["Profit"] = styled["Profit"].apply(lambda x: f"+${x:,.2f}")
-            styled["Loss"] = styled["Loss"].apply(lambda x: f"-${abs(x):,.2f}")
-            styled["Net P&L"] = styled["Net P&L"].apply(
-                lambda x: f"+${x:,.2f}" if x >= 0 else f"-${abs(x):,.2f}"
-            )
-            st.dataframe(styled, use_container_width=True, hide_index=True)
-
-        st.markdown("<div class='section-header'>Individual Trade Records</div>", unsafe_allow_html=True)
-
-        # Search/filter
-        search = st.text_input("🔍 Filter by ticker or name", placeholder="e.g. SOFI, Vistra…")
         filtered = trades_df
-        if search:
-            mask = (
-                trades_df["Ticker"].fillna("").str.upper().str.contains(search.upper()) |
-                trades_df["Name"].fillna("").str.upper().str.contains(search.upper())
-            )
-            filtered = trades_df[mask]
+        if search2:
+            m = (trades_df["Ticker"].fillna("").str.upper().str.contains(search2.upper()) |
+                 trades_df["Name"].fillna("").str.upper().str.contains(search2.upper()))
+            filtered = filtered[m]
+        if act_filter:
+            filtered = filtered[filtered["Action"].isin(act_filter)]
 
-        action_filter = st.multiselect(
-            "Filter by action",
-            options=sorted(trades_df["Action"].unique().tolist()),
-            default=[],
-            placeholder="All actions",
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:rgba(226,228,240,0.35);margin-bottom:0.5rem;'>"
+            f"Showing <b style='color:#a78bfa'>{len(filtered):,}</b> of {len(trades_df):,} records</div>",
+            unsafe_allow_html=True,
         )
-        if action_filter:
-            filtered = filtered[filtered["Action"].isin(action_filter)]
+        st.dataframe(filtered.reset_index(drop=True), use_container_width=True, hide_index=True)
 
-        st.dataframe(
-            filtered.reset_index(drop=True),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        # Download
-        csv_bytes = filtered.to_csv(index=False).encode()
-        st.download_button(
-            "⬇️ Download filtered trades as CSV",
-            data=csv_bytes,
-            file_name=f"trades_{start_date}_{end_date}.csv",
-            mime="text/csv",
-        )
+        csv_t = filtered.to_csv(index=False).encode()
+        st.download_button("⬇️ Export trade records", csv_t,
+                           f"trades_{start_date}_{end_date}.csv", "text/csv")
 
 
-# ---- Tab 3: Dividends & Interest ------------------------------------------
-with tabs[2]:
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        st.markdown("<div class='section-header'>💵 Dividends</div>", unsafe_allow_html=True)
-        div_df = analyzer.get_dividends_table(df)
-        if div_df.empty:
-            st.info("No dividends in the selected period.")
-        else:
-            st.markdown(f"**{len(div_df)} dividend payments** | Net: **€{summary['div_net_eur']:.4f}** | Withholding: **€{summary['div_withholding_eur']:.4f}**")
-            st.dataframe(div_df, use_container_width=True, hide_index=True)
-
-    with col_right:
-        st.markdown("<div class='section-header'>🏦 Interest &amp; Cashback</div>", unsafe_allow_html=True)
-        interest_df = df[df["_category"].isin(["interest", "cashback"])][
-            ["Time", "Action", "Total", "Currency (Total)"]
-        ].sort_values("Time", ascending=False).reset_index(drop=True)
-
-        if interest_df.empty:
-            st.info("No interest/cashback in the selected period.")
-        else:
-            total_interest = interest_df[interest_df["Action"].str.lower().str.contains("interest", na=False)]["Total"].sum()
-            total_cashback = interest_df[interest_df["Action"].str.lower().str.contains("cashback", na=False)]["Total"].sum()
-            st.markdown(f"**{len(interest_df)} payments** | Interest: **{total_interest:.4f}** | Cashback: **€{total_cashback:.4f}**")
-            st.dataframe(interest_df, use_container_width=True, hide_index=True)
-
-    # Card spending analysis (optional)
-    if show_card_spending:
-        st.markdown("<div class='section-header'>💳 Card Spending</div>", unsafe_allow_html=True)
+# ── Tab 7 : Card Spending (optional) ─────────────────────────────────────────
+if show_card_spending:
+    with tabs[6]:
         card_df = df[df["_category"] == "card_debit"][
             ["Time", "Total", "Currency (Total)", "Merchant name", "Merchant category"]
         ].copy()
-        if not card_df.empty:
-            card_df["Total"] = card_df["Total"].abs()
-            st.markdown(f"**{len(card_df)} transactions** | Total spent: **€{summary['total_card_spent_eur']:,.2f}**")
 
-            # Spending by category
+        if card_df.empty:
+            st.markdown("<div class='info-callout'>No card transactions in the selected period.</div>",
+                        unsafe_allow_html=True)
+        else:
+            card_df["Total"] = card_df["Total"].abs()
+            total_spent = summary["total_card_spent_eur"]
+
+            st.markdown(cards_row([
+                card("Total Card Spent", fmt_eur(total_spent),
+                     f"{len(card_df)} transactions", "💳", "accent-red"),
+            ]), unsafe_allow_html=True)
+
             if "Merchant category" in card_df.columns:
                 by_cat = card_df.groupby("Merchant category")["Total"].sum().sort_values(ascending=False)
-                cat_fig = px.bar(
+                import plotly.graph_objects as go_local
+                cat_fig = go_local.Figure(go_local.Bar(
                     x=by_cat.index, y=by_cat.values,
-                    labels={"x": "Category", "y": "Total Spent (EUR)"},
-                    color_discrete_sequence=["#7c4dff"]
-                )
+                    marker_color=["#a78bfa"] * len(by_cat),
+                    marker_line_width=0,
+                    hovertemplate="<b>%{x}</b><br>Spent: €%{y:,.2f}<extra></extra>",
+                ))
                 cat_fig.update_layout(
-                    paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-                    font=dict(color="#e0e0e0"), height=300,
+                    paper_bgcolor="#0a0b14", plot_bgcolor="#11121e",
+                    font=dict(color="#e2e4f0"), height=300,
                     margin=dict(l=10, r=10, t=30, b=10),
+                    title=dict(text="Spending by Category", font=dict(size=14)),
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
+                    yaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
                 )
                 st.plotly_chart(cat_fig, use_container_width=True)
 
+            card_df["Time"] = card_df["Time"].dt.strftime("%b %d, %Y %H:%M")
             st.dataframe(card_df.sort_values("Time", ascending=False).reset_index(drop=True),
                          use_container_width=True, hide_index=True)
-
-
-# ---- Tab 4: Raw Data -------------------------------------------------------
-if show_raw:
-    with tabs[3]:
-        st.markdown(f"**{len(df):,} rows** in filter period | Full dataset: **{len(df_all):,} rows**")
-
-        category_filter = st.multiselect(
-            "Filter by category",
-            options=sorted(df["_category"].unique().tolist()),
-            default=[],
-            placeholder="All categories",
-        )
-
-        display_df = df.drop(columns=["_month"], errors="ignore")
-
-        if category_filter:
-            display_df = display_df[display_df["_category"].isin(category_filter)]
-
-        st.dataframe(display_df.reset_index(drop=True), use_container_width=True, hide_index=True)
-
-        csv_raw = display_df.to_csv(index=False).encode()
-        st.download_button(
-            "⬇️ Download filtered raw data",
-            data=csv_raw,
-            file_name=f"trading212_raw_{start_date}_{end_date}.csv",
-            mime="text/csv",
-        )

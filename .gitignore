@@ -37,3 +37,7 @@ Desktop.ini
 *.log
 *.env
 .env
+
+# ----- Exports -----
+exports
+/exports    
