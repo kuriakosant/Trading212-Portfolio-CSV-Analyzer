@@ -438,6 +438,15 @@ with st.sidebar:
     show_card_spending = st.checkbox("Card spending tab", value=False)
 
     st.divider()
+    
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Export</div>", unsafe_allow_html=True)
+    # We delay generating the actual CSV binary until the user has loaded data. 
+    # But Streamlit sidebar runs sequentially. If df is loaded, we can put it here, 
+    # but the df loading happens in the main code block below the sidebar. 
+    # So we'll use a placeholder instead and fill it later.
+    export_placeholder = st.empty()
+
+    st.divider()
     st.markdown(
         "<div style='font-size:0.7rem;color:rgba(226,228,240,0.2);line-height:1.6;'>"
         "CSV files are never stored or committed.<br>All analysis runs locally."
@@ -513,6 +522,16 @@ st.markdown(
     f" → <b>{end_date.strftime('%b %d, %Y')}</b>"
     f" &nbsp;·&nbsp; {len(df):,} transactions &nbsp;·&nbsp; {days_in_range} days</div>",
     unsafe_allow_html=True,
+)
+
+# Populate Summary Export in the sidebar
+summary_df = analyzer.export_portfolio_summary(summary, start_date, end_date)
+export_placeholder.download_button(
+    "📥 Download Portfolio Summary", 
+    data=summary_df.to_csv(index=False).encode(),
+    file_name=f"Portfolio_Summary_{start_date}_to_{end_date}.csv", 
+    mime="text/csv",
+    help="Download a high-level portfolio summary for custom Excel tracking."
 )
 
 # ---------------------------------------------------------------------------

@@ -191,6 +191,32 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_withdrawals": len(withdrawals),
     }
 
+def export_portfolio_summary(summary: dict, start_date, end_date) -> pd.DataFrame:
+    """
+    Creates a single-row DataFrame summarizing the total account stats for custom Excel export.
+    """
+    net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
+    total_return = summary["net_pnl"] + summary["div_net_eur"] + summary["interest_eur"] + summary.get("interest_usd", 0) + summary["cashback_eur"]
+    
+    data = {
+        "Start Date": start_date.strftime("%Y-%m-%d") if pd.notna(start_date) else "",
+        "End Date": end_date.strftime("%Y-%m-%d") if pd.notna(end_date) else "",
+        "Gross Profit": summary["gross_profit"],
+        "Gross Loss": summary["gross_loss"],
+        "Net Trading P&L": summary["net_pnl"],
+        "Net Dividends": summary["div_net_eur"],
+        "Total Interest": summary["interest_eur"] + summary.get("interest_usd", 0),
+        "Cashback": summary["cashback_eur"],
+        "Total Return (P&L + Yield)": total_return,
+        "Total Deposits": summary["total_deposited_eur"],
+        "Total Withdrawals": summary["total_withdrawn_eur"],
+        "Net Deposited": net_deposited,
+        "Win Rate %": round(summary["win_rate"], 2),
+        "Total Sell Trades": summary["n_sells"]
+    }
+    
+    return pd.DataFrame([data])
+
 
 # ---------------------------------------------------------------------------
 # Per-ticker breakdown
