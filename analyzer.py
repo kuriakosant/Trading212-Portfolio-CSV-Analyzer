@@ -56,10 +56,43 @@ def load_csv(uploaded_file) -> pd.DataFrame:
 
 
 def load_csvs(uploaded_files) -> pd.DataFrame:
+    """
+    Load and merge multiple CSV exports, de-duplicating robustly.
+
+    Trading212 exports can overlap (e.g. Dec 31 appears in both a 2025 file
+    and a 2026 file).  De-duplication is done in two passes:
+
+    Pass 1 — ID-based (covers trades, deposits, interest, cashback, FX, etc.)
+        Every row that has a non-empty ID value is deduplicated by that ID.
+        IDs are globally unique transaction identifiers assigned by Trading212.
+
+    Pass 2 — Content fingerprint (covers dividends and any other rows with
+        a blank/null ID column).
+        Fingerprint = (Time, Action, ISIN, No. of shares, Total)
+        Two rows with identical fingerprints on the same instant cannot be
+        different transactions, so the duplicate is dropped.
+    """
     frames = [load_csv(f) for f in uploaded_files]
     combined = pd.concat(frames, ignore_index=True)
-    if "ID" in combined.columns:
-        combined = combined.drop_duplicates(subset=["ID"])
+
+    if "ID" not in combined.columns:
+        combined["ID"] = pd.NA
+
+    # Split into rows that have an ID and rows that don't
+    has_id  = combined["ID"].notna() & (combined["ID"].astype(str).str.strip() != "")
+    with_id    = combined[has_id].copy()
+    without_id = combined[~has_id].copy()
+
+    # Pass 1: deduplicate by ID
+    with_id = with_id.drop_duplicates(subset=["ID"])
+
+    # Pass 2: deduplicate by content fingerprint
+    fp_cols = ["Time", "Action", "ISIN", "No. of shares", "Total"]
+    fp_available = [c for c in fp_cols if c in without_id.columns]
+    if fp_available:
+        without_id = without_id.drop_duplicates(subset=fp_available)
+
+    combined = pd.concat([with_id, without_id], ignore_index=True)
     return combined.sort_values("Time").reset_index(drop=True)
 
 
