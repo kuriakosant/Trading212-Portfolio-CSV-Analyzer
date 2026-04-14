@@ -525,13 +525,13 @@ st.markdown(
 )
 
 # Populate Summary Export in the sidebar
-summary_df = analyzer.export_portfolio_summary(summary, start_date, end_date)
+excel_bytes = analyzer.export_portfolio_excel(df, summary, start_date, end_date)
 export_placeholder.download_button(
-    "📥 Download Portfolio Summary", 
-    data=summary_df.to_csv(index=False).encode(),
-    file_name=f"Portfolio_Summary_{start_date}_to_{end_date}.csv", 
-    mime="text/csv",
-    help="Download a high-level portfolio summary for custom Excel tracking."
+    "📥 Download Excel Report", 
+    data=excel_bytes,
+    file_name=f"Portfolio_Report_{start_date}_to_{end_date}.xlsx", 
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    help="Download a highly detailed multi-sheet Excel report for external tracking."
 )
 
 # ---------------------------------------------------------------------------

@@ -191,31 +191,86 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_withdrawals": len(withdrawals),
     }
 
-def export_portfolio_summary(summary: dict, start_date, end_date) -> pd.DataFrame:
+import io
+
+def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date) -> bytes:
     """
-    Creates a single-row DataFrame summarizing the total account stats for custom Excel export.
+    Creates a professionally formatted multi-sheet Excel file (.xlsx) in memory.
+    Sheet 1: High-level Portfolio Total Overview
+    Sheet 2: Month-by-Month Performance History
     """
     net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
     total_return = summary["net_pnl"] + summary["div_net_eur"] + summary["interest_eur"] + summary.get("interest_usd", 0) + summary["cashback_eur"]
     
-    data = {
-        "Start Date": start_date.strftime("%Y-%m-%d") if pd.notna(start_date) else "",
-        "End Date": end_date.strftime("%Y-%m-%d") if pd.notna(end_date) else "",
-        "Gross Profit": summary["gross_profit"],
-        "Gross Loss": summary["gross_loss"],
-        "Net Trading P&L": summary["net_pnl"],
-        "Net Dividends": summary["div_net_eur"],
-        "Total Interest": summary["interest_eur"] + summary.get("interest_usd", 0),
-        "Cashback": summary["cashback_eur"],
-        "Total Return (P&L + Yield)": total_return,
-        "Total Deposits": summary["total_deposited_eur"],
-        "Total Withdrawals": summary["total_withdrawn_eur"],
-        "Net Deposited": net_deposited,
-        "Win Rate %": round(summary["win_rate"], 2),
-        "Total Sell Trades": summary["n_sells"]
+    # Overview Data
+    overview_data = {
+        "Metric": [
+            "Start Date", "End Date",
+            "Total Deposits (€)", "Total Withdrawals (€)", "Net Deposited (€)",
+            "Gross Profit ($)", "Gross Loss ($)", "Net Trading P&L ($)", 
+            "Win Rate (%)", "Total Sell Trades",
+            "Gross Dividends (€)", "Withholding Tax (€)", "Net Dividends (€)",
+            "Total Interest (EUR + USD eq.)", "Cashback (€)",
+            "Total Return (P&L + Yield)"
+        ],
+        "Value": [
+            start_date.strftime("%Y-%m-%d") if pd.notna(start_date) else "",
+            end_date.strftime("%Y-%m-%d") if pd.notna(end_date) else "",
+            summary["total_deposited_eur"], summary["total_withdrawn_eur"], net_deposited,
+            summary["gross_profit"], summary["gross_loss"], summary["net_pnl"],
+            round(summary["win_rate"], 2), summary["n_sells"],
+            summary["div_gross_eur"], summary["div_withholding_eur"], summary["div_net_eur"],
+            summary["interest_eur"] + summary.get("interest_usd", 0), summary["cashback_eur"],
+            total_return
+        ]
     }
+    df_overview = pd.DataFrame(overview_data)
     
-    return pd.DataFrame([data])
+    # Monthly Data (Add Deposits/Withdrawals to the standard monthly view)
+    df_monthly = monthly_summary(df).copy()
+    
+    # Calculate monthly deposits/withdrawals
+    deposits = df[df["_category"] == "deposit"].copy()
+    withdrawals = df[df["_category"] == "withdrawal"].copy()
+    
+    dep_monthly = deposits.groupby(deposits["Time"].dt.to_period("M"))["Total"].sum() if not deposits.empty else pd.Series()
+    wdr_monthly = withdrawals.groupby(withdrawals["Time"].dt.to_period("M"))["Total"].sum() if not withdrawals.empty else pd.Series()
+    
+    # Add to df_monthly seamlessly
+    df_monthly["Deposits (€)"] = df_monthly["Month"].map(lambda m: dep_monthly.get(pd.Period(m, freq='M'), 0.0))
+    df_monthly["Withdrawals (€)"] = df_monthly["Month"].map(lambda m: wdr_monthly.get(pd.Period(m, freq='M'), 0.0))
+    df_monthly["Net Monthly Deposited (€)"] = df_monthly["Deposits (€)"] - df_monthly["Withdrawals (€)"]
+
+    # Reorder columns for readability
+    month_cols = ["Month", "Deposits (€)", "Withdrawals (€)", "Net Monthly Deposited (€)", 
+                  "Profit", "Loss", "Net P&L", "Dividends (EUR)", "Interest"]
+    df_monthly = df_monthly[[c for c in month_cols if c in df_monthly.columns]]
+
+    # Write to Excel BytesIO
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Sheet 1: Overview
+        df_overview.to_excel(writer, sheet_name='Portfolio Summary', index=False)
+        worksheet1 = writer.sheets['Portfolio Summary']
+        worksheet1.set_column('A:A', 30)
+        worksheet1.set_column('B:B', 20)
+        
+        # Add basic formatting
+        workbook = writer.book
+        money_fmt = workbook.add_format({'num_format': '#,##0.00'})
+        worksheet1.set_column('B:B', 20, money_fmt)
+        
+        # Sheet 2: Monthly Performance
+        df_monthly.to_excel(writer, sheet_name='Monthly Performance', index=False)
+        worksheet2 = writer.sheets['Monthly Performance']
+        worksheet2.set_column('A:A', 15)
+        worksheet2.set_column('B:I', 18, money_fmt)
+        
+        # Freeze top row
+        worksheet1.freeze_panes(1, 0)
+        worksheet2.freeze_panes(1, 0)
+
+    return output.getvalue()
 
 
 # ---------------------------------------------------------------------------
