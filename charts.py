@@ -727,3 +727,78 @@ def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
     fig.update_yaxes(title_text="Cumulative P&L ($)")
     fig.update_xaxes(title_text="Date")
     return fig
+
+
+# ---------------------------------------------------------------------------
+# 12. Total Portfolio Progress area chart
+# ---------------------------------------------------------------------------
+
+def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True, show_div: bool = True, show_int: bool = True) -> go.Figure:
+    """
+    Stacked/Overlaid area chart showing the growth of net deposits and P&L.
+    """
+    if prog_df.empty:
+        return _empty("No portfolio data available")
+
+    fig = _fig("📈 Total Portfolio Value Tracker", height=500)
+
+    # Calculate dynamic total line based on what's activated
+    total_line = pd.Series(0, index=prog_df.index)
+    if show_dep: total_line += prog_df["Net Deposits"].fillna(0)
+    if show_pnl: total_line += prog_df["Daily P&L"].fillna(0)
+    if show_div: total_line += prog_df["Daily Dividends"].fillna(0)
+    if show_int: total_line += prog_df["Daily Interest"].fillna(0)
+
+    # We stack Net Deposits + P&L + Divs + Interest
+    if show_dep:
+        fig.add_trace(go.Scatter(
+            x=prog_df["Date"].astype(str), y=prog_df["Net Deposits"],
+            mode="lines", name="Net Deposits",
+            line=dict(color=C_BLUE, width=0),
+            fill="tozeroy", fillcolor="rgba(56,189,248,0.3)",
+            stackgroup="one",
+            hovertemplate="<b>%{x}</b><br>Net Deposits: <b>$%{y:,.2f}</b><extra></extra>"
+        ))
+
+    if show_pnl:
+        fig.add_trace(go.Scatter(
+            x=prog_df["Date"].astype(str), y=prog_df["Daily P&L"],
+            mode="lines", name="Cumulative P&L",
+            line=dict(color=C_GREEN, width=0),
+            fill="tonexty", fillcolor="rgba(34,197,94,0.4)",
+            stackgroup="one",
+            hovertemplate="<b>%{x}</b><br>Cumul P&L: <b>$%{y:+,.2f}</b><extra></extra>"
+        ))
+
+    if show_div:
+        fig.add_trace(go.Scatter(
+            x=prog_df["Date"].astype(str), y=prog_df["Daily Dividends"],
+            mode="lines", name="Cumulative Dividends",
+            line=dict(color=C_PURPLE, width=0),
+            fill="tonexty", fillcolor="rgba(167,139,250,0.5)",
+            stackgroup="one",
+            hovertemplate="<b>%{x}</b><br>Dividends: <b>$%{y:,.2f}</b><extra></extra>"
+        ))
+
+    if show_int:
+        fig.add_trace(go.Scatter(
+            x=prog_df["Date"].astype(str), y=prog_df["Daily Interest"],
+            mode="lines", name="Cumulative Interest",
+            line=dict(color=C_AMBER, width=0),
+            fill="tonexty", fillcolor="rgba(251,191,36,0.6)",
+            stackgroup="one",
+            hovertemplate="<b>%{x}</b><br>Interest: <b>$%{y:,.2f}</b><extra></extra>"
+        ))
+
+    # Add the top line outline for total value
+    fig.add_trace(go.Scatter(
+        x=prog_df["Date"].astype(str), y=total_line,
+        mode="lines", name="Tracked Summary",
+        line=dict(color=C_TEXT, width=2, shape="spline"),
+        hovertemplate="<b>%{x}</b><br>Tracked Summary: <b>$%{y:,.2f}</b><extra></extra>"
+    ))
+
+    fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig.update_yaxes(title_text="Tracked Value ($)")
+
+    return fig

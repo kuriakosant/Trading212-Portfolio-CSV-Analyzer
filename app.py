@@ -559,6 +559,22 @@ st.markdown(cards_row([
 ]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
+# Total Portfolio Progress
+# ---------------------------------------------------------------------------
+
+section("📈 Total Portfolio Value Tracker")
+prog_df = analyzer.portfolio_progress_daily(df)
+if not prog_df.empty:
+    with st.expander("⚙️ Chart Settings & Toggles", expanded=False):
+        col1, col2, col3, col4 = st.columns(4)
+        show_dep = col1.checkbox("Show Net Deposits", value=True)
+        show_pnl = col2.checkbox("Show Cumulative P&L", value=True)
+        show_div = col3.checkbox("Show Dividends", value=True)
+        show_int = col4.checkbox("Show Interest", value=True)
+    
+    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int), use_container_width=True)
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 

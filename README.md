@@ -7,6 +7,34 @@ Upload one or more CSV files, pick a date range, and instantly get P&L breakdown
 
 ---
 
+## Visual Overview
+
+### 1. Main Dashboard & Portfolio Tracking
+![Main App](assets/photo.png)  
+The main dashboard gives you at-a-glance metrics for your trading P&L, passive income (dividends & interest), and net deposits. It also features a massive **Total Portfolio Value Tracker** chart right at the top, showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest.
+
+### 2. P&L Timeline
+![P&L Timeline](assets/PNL.png)  
+Deep dive into your trading performance with the **P&L Timeline**. Switch between Daily, Weekly, Monthly, or Quarterly resolutions. The top chart shows your cumulative P&L growth, while the bottom bars show your period-by-period returns.
+
+### 3. Companies Deep-Dive
+![Companies Deep-Dive](assets/Companies.png)  
+The **Companies** tab breaks down your performance per ticker. Discover your highest win rate, most traded company, and best/worst performers. The horizontal bar chart instantly visualizes your net P&L across all traded companies.
+
+### 4. Company Drill-Down
+![Company Drill-Down](assets/company-drill-down.png)  
+Select any individual ticker to reveal its complete trading history. See specific metrics for that stock (like your best and worst single trades), view a timeline chart of your cumulative P&L specific to that ticker, and review a full log of every buy and sell order.
+
+### 5. Dividends Tracker
+![Dividends Growth](assets/dividends.png)  
+Track your passive income with the **Dividends** tab. It features a cumulative step-growth chart to visualize your compounding dividend income, along with a full tax breakdown layout.
+
+### 6. Interest Growth
+![Interest Tracking](assets/Interest.png)  
+The **Interest** tab natively splits your cash + lending interest into EUR and USD lines, letting you see exactly how your unused cash padding is performing over time.
+
+---
+
 ## Features
 
 | Tab | What it shows |

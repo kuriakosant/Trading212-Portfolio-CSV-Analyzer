@@ -428,3 +428,67 @@ def company_trade_history(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     out = trades[available].copy()
     out = out.rename(columns={"Result_clean": "Trade P&L ($)"})
     return out.reset_index(drop=True)
+
+
+def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Returns a daily timeline of the entire portfolio:
+      - Cumulative Net Deposits (Deposits - Withdrawals)
+      - Cumulative Realized P&L
+      - Cumulative Dividends
+      - Cumulative Interest
+      - Total Tracked Value (Net Deposits + P&L + Dividends + Interest)
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    start_date = df["Time"].min().date()
+    end_date = df["Time"].max().date()
+    all_days = pd.date_range(start_date, end_date, freq="D")
+    
+    # helper for daily aggregation
+    def get_daily_series(condition, col="Total"):
+        sub = df[condition].copy()
+        if sub.empty:
+            return pd.Series(0, index=all_days)
+        sub["Date"] = sub["Time"].dt.date
+        return sub.groupby("Date")[col].sum().reindex(all_days.date, fill_value=0)
+
+    # Note: deposits and withdrawals should be accumulated.
+    # Convert all values to a naive float sum. In practice, some might be cross-currency,
+    # but the primary currency (USD/EUR) is usually dominant in Total depending on user.
+    # Here, we use the `Result` for P&L and `Total` for cash flows, ensuring withdrawals are negative.
+
+    dep = get_daily_series(df["_category"] == "deposit", "Total")
+    wdr = get_daily_series(df["_category"] == "withdrawal", "Total")
+    
+    # Realized P&L
+    pnl = get_daily_series(df["_category"] == "sell", "Result")
+    
+    # Dividends (Total is usually the net amount, but check div_growth_series logic - we can use Total)
+    divs = get_daily_series(df["_category"] == "dividend", "Total")
+    
+    # Interest
+    ints = get_daily_series(df["_category"] == "interest", "Total")
+    
+    daily_df = pd.DataFrame({
+        "Deposits": dep,
+        "Withdrawals": wdr,
+        "Daily P&L": pnl,
+        "Daily Dividends": divs,
+        "Daily Interest": ints
+    }, index=all_days.date)
+    
+    # Add everything cumulatively
+    res = daily_df.cumsum()
+    # Net deposits: deposits minus withdrawals (assuming withdrawals in CSV Total column are positive, if negative then + wdr)
+    # Trading212 lists withdrawals with a positive Total value typically? Wait, deposits have positive Total?
+    # Let's assume deposits and withdrawals are positive absolutes, or use 'Total' sum and adjust.
+    # Usually: Deposit Total > 0. Withdrawal Total > 0? Actually Trading212 withdrawal 'Total' is positive.
+    # We will subtract withdrawals.
+    res["Net Deposits"] = res["Deposits"] - res["Withdrawals"]
+    
+    res["Total Value Tracked"] = res["Net Deposits"] + res["Daily P&L"] + res["Daily Dividends"] + res["Daily Interest"]
+    
+    res = res.reset_index().rename(columns={"index": "Date"})
+    return res
