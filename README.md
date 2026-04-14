@@ -10,7 +10,7 @@ Upload one or more CSV files, pick a date range, and instantly get P&L breakdown
 ## Visual Overview
 
 ### 1. Main Dashboard & Portfolio Tracking
-![Main App](assets/photo.png)  
+![Main App](assets/CHART.png)  
 The main dashboard gives you at-a-glance metrics for your trading P&L, passive income (dividends & interest), and net deposits. It also features a massive **Total Portfolio Value Tracker** chart right at the top, showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest.
 
 ### 2. P&L Timeline
