@@ -1,0 +1,39 @@
+# ============================================================
+# Trading212 Portfolio CSV Analyzer — .gitignore
+# ============================================================
+
+# ----- CSV DATA FILES (NEVER COMMIT — contains private financial data) -----
+*.csv
+*.CSV
+
+# ----- Python virtual environment -----
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# ----- Streamlit cache -----
+.streamlit/
+
+# ----- OS files -----
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ----- IDE -----
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ----- Jupyter notebooks / scratch -----
+*.ipynb
+.ipynb_checkpoints/
+
+# ----- Misc -----
+*.log
+*.env
+.env
