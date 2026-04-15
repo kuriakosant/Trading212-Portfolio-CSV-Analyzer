@@ -36,7 +36,7 @@ BASE_LAYOUT = dict(
     font        = dict(family=FONT, color=C_TEXT, size=13),
     paper_bgcolor = C_BG,
     plot_bgcolor  = C_PANEL,
-    margin      = dict(l=12, r=12, t=52, b=16),
+    margin      = dict(l=16, r=65, t=55, b=24),  # Increased right margin to prevent Plotly text/bubble clipping
     hoverlabel  = dict(
         bgcolor="#1c1d2e",
         bordercolor=C_PURPLE,
@@ -595,6 +595,7 @@ def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
         ),
         text=[f"${v:+,.2f}" for v in df["Net P&L ($)"]],
         textposition="outside",
+        cliponaxis=False,
         textfont=dict(size=10, color=colors),
     ))
 
@@ -636,6 +637,7 @@ def chart_company_bubble(company_df: pd.DataFrame) -> go.Figure:
         mode="markers+text",
         text=df["Ticker"],
         textposition="top center",
+        cliponaxis=False,
         textfont=dict(size=10, color=C_MUTED),
         marker=dict(
             size=df["_size"],

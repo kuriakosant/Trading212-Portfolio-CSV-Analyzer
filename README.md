@@ -1,67 +1,53 @@
-# Trading212 Portfolio CSV Analyzer
+# Trading212 Portfolio & Card Analytics Terminal
 
-![App Screenshot](assets/photo.png)
+> *"A powerful, private, and deeply analytical dashboard that unpacks the dense CSV export data from Trading212. It surfaces hidden metrics—like trade win rates, exact aggregate fees, compound dividend trajectories, and structural visa/mastercard spending patterns—that the native Trading212 app simply doesn't show you."*
 
-A powerful **Streamlit** web app for analyzing your Trading212 portfolio exports.  
-Upload one or more CSV files, pick a date range, and instantly get P&L breakdowns, dividend growth charts, interest tracking, and a deep per-company comparison — all in a premium dark UI.
+![Main Dashboard](assets/photo.png)
 
----
-
-## Visual Overview
-
-### 1. Main Dashboard & Portfolio Tracking
-![Main App](assets/CHART.png)  
-The main dashboard gives you at-a-glance metrics for your trading P&L, passive income (dividends & interest), and net deposits. It also features a massive **Total Portfolio Value Tracker** chart right at the top, showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest.
-
-### 2. P&L Timeline
-![P&L Timeline](assets/PNL.png)  
-Deep dive into your trading performance with the **P&L Timeline**. Switch between Daily, Weekly, Monthly, or Quarterly resolutions. The top chart shows your cumulative P&L growth, while the bottom bars show your period-by-period returns.
-
-### 3. Companies Deep-Dive
-![Companies Deep-Dive](assets/Companies.png)  
-The **Companies** tab breaks down your performance per ticker. Discover your highest win rate, most traded company, and best/worst performers. The horizontal bar chart instantly visualizes your net P&L across all traded companies.
-
-### 4. Company Drill-Down
-![Company Drill-Down](assets/company-drill-down.png)  
-Select any individual ticker to reveal its complete trading history. See specific metrics for that stock (like your best and worst single trades), view a timeline chart of your cumulative P&L specific to that ticker, and review a full log of every buy and sell order.
-
-### 5. Dividends Tracker
-![Dividends Growth](assets/dividends.png)  
-Track your passive income with the **Dividends** tab. It features a cumulative step-growth chart to visualize your compounding dividend income, along with a full tax breakdown layout.
-
-### 6. Interest Growth
-![Interest Tracking](assets/Interest.png)  
-The **Interest** tab natively splits your cash + lending interest into EUR and USD lines, letting you see exactly how your unused cash padding is performing over time.
+A high-performance **Streamlit** web application for visualizing your Trading212 portfolio and debit card activity.  
+Upload one or more CSV files, pick a date range, and instantly unlock institutional-grade P&L breakdowns, yield tracking, and a deep per-company comparison — all wrapped in a premium dark UI.
 
 ---
 
-## Features
-
-| Tab | What it shows |
-|---|---|
-| **📈 P&L Timeline** | Cumulative P&L area chart + period bars, switchable between **Daily / Weekly / Monthly / Quarterly** resolution. Hover any point to see exact P&L, win rate, and trade count for that period. |
-| **📅 Monthly** | Side-by-side grouped bars for Profit, Loss, Net P&L, Dividends, and Interest — one column per month. |
-| **🏆 Tickers** | Horizontal bar chart of your best and worst performing tickers + sortable/searchable full breakdown table. |
-| **🏢 Companies** | Deep per-company stats: total buy & sell trades, volume, gross profit, gross loss, net P&L, win rate, best/worst single trade, average win/loss. Interactive bubble chart (trades vs P&L vs volume) and a drill-down timeline for any selected company. Multi-company comparison mode. |
-| **💵 Dividends** | Cumulative step-line growth chart + per-payment bars grouped by ticker. Full payment log with withholding tax column. |
-| **🏦 Interest** | Separate EUR and USD cumulative interest growth lines. Full interest/lending payment log. |
-| **🔄 Trades** | Searchable & filterable table of every buy/sell transaction. Export to CSV. |
-| **💳 Card Spending** | *(Optional)* Card debit transactions grouped by merchant category. |
-
-### Summary Metric Cards
-Two rows of live-updating metric cards at the top of every page:
-- **Trading P&L** — Total Profit · Total Loss · Net P&L · Win Rate · Buy Count
-- **Passive Income & Cash** — Dividends · Withholding Tax · EUR Interest · USD Interest · Cashback · Net Deposited
+## 🚀 The "Missing" Trading212 Insights
+While the native Trading212 app is excellent for execution, its analytics are basic. This dashboard extracts and visualizes the raw data hidden within your export files to give you:
+- **True Win Rates**: Know exactly how many sell trades resulted in a profit vs. a loss, and visualize your win-ratio per ticker.
+- **Hidden Fees & Taxes**: See the exact aggregated total of FX fees, stamp duties, and hidden costs you've paid across your trading career.
+- **Algorithmic P&L Correlation**: Scatter plot visualization showing Trade Volume vs. Total Trades vs. Net P&L to see if overtrading is hurting your returns.
+- **Aggregated Net Deposits**: Flawless tracking of In/Out flows, automatically deducting your stock market withdrawals *and* your card spending.
+- **Card Spending Analytics**: Beautiful categorizations of your Trading212 Visa/Mastercard debit expenses, top merchants, and spending velocity.
 
 ---
 
-## Installation
+## 📊 Comprehensive Feature Breakdown
+
+### 🏦 1. Portfolio Tracking & Yield
+- **Main Progress Timeline**: A massive Total Portfolio Value Tracker showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest layered together.
+- **P&L Timeline**: Deep dive into your trading performance with Daily, Weekly, Monthly, or Quarterly resolutions. The top area chart tracks cumulative P&L growth, while bottom bars show period-by-period returns.
+- **Income Deep-Dives**: Separate tabs for Dividends and Interest. Watch your compound passive income grow with step-charts, and track withholding taxes cleanly.
+
+### 🏢 2. Ticker & Company Intelligence
+- **Market Rankings**: See your highest win-rate ticker, your most traded company, and your absolute best/worst performers. 
+- **Trades vs. P&L Matrix**: An interactive bubble chart mapping the number of trades against Net P&L. Bubble size denotes total capital deployed, while the color gradient (Red to Green) represents your absolute win-rate.
+- **Multi-Line Comparables**: Select multiple companies to stack their running P&L timelines onto a single interactive chart.
+- **Granular Drill-Downs**: Select any individual stock to reveal its complete sequence of buys and sells on a single timeline line, visually marking your entries (grey) and exits (red/green).
+
+### 💳 3. Trading212 Card Spending Analyzer
+The dashboard dynamically splits into a secondary "Card Spending" suite if it detects debit card activity within your CSVs.
+- **Monthly Velocity**: Bar charts tracking your day-to-day debit card burn rate.
+- **Merchant Profiling**: A horizontal leaderboard identifying your Top 10 most frequented merchants.
+- **Category Donut**: A breakdown of your spending by internal Visa/Mastercard categories (e.g., Retail, Groceries, Restaurants). 
+- **Cashback Metrics**: Fully integrates your 0.5% - 1.5% cashback rewards into your overarching portfolio returns.
+
+---
+
+## 💾 Installation & Setup
 
 ### Prerequisites
 - Python 3.9+
 - A Trading212 Invest or ISA account (CSV export)
 
-### Setup
+### Terminal Startup
 
 ```bash
 # 1. Clone the repo
@@ -83,80 +69,38 @@ Then open **http://localhost:8501** in your browser.
 
 ---
 
-## Exporting your CSV from Trading212
+## 🗄 Exporting your CSV from Trading212
 
 1. Open the **Trading212** app (mobile or web)
-2. Tap **Menu → History**
-3. Tap the **download / export icon** (top right)
+2. Go to **Menu → History**
+3. Click the **download / export icon** (top right)
 4. Select your date range *(max 365 days per export)*
 5. Tap **Export** — the CSV downloads to your device
 
-> **Tip:** For multi-year history, export one year at a time and upload all files together — the app merges and de-duplicates them automatically.
+> **Tip:** For multi-year history, export one year at a time. The sidebar uploader accepts multiple CSV files concurrently and will merge/de-duplicate them completely automatically!
 
 ---
 
-## How to use
+## 🔒 Data Privacy & Security
 
-1. **Upload CSVs** — drag-and-drop one or more files using the sidebar uploader
-2. **Set a date range** — use a quick preset (This Month, Last 3 Months, This Year…) or pick custom dates
-3. **Explore** — navigate the tabs to view charts, tables, and breakdowns
-4. **Filter** — use the search boxes and action filters in the Trades and Companies tabs
-5. **Export** — download any filtered table as a CSV using the export buttons
+- **No data eavesdropping.** The app runs completely locally on your own machine's Python environment.
+- **CSV files are git-ignored** directly in the source control config. You cannot accidentally commit your financial data to GitHub.
+- **Zero Telemetry.** No external API calls, no analytics tracking, no server-side renders.
 
 ---
 
-## Project structure
+## 📦 Supported Action Types
 
-```
-Trading212-Portfolio-CSV-Analyzer/
-├── app.py              # Streamlit UI — all pages, tabs, and layout
-├── analyzer.py         # CSV parser, action classifier, P&L calculations, timeline resampling
-├── charts.py           # Plotly chart generation (dark theme)
-├── requirements.txt    # Python dependencies
-├── .gitignore          # Excludes all *.csv files — your data stays private
-└── assets/
-    └── photo.png       # Hero screenshot (add your own)
-```
-
----
-
-## Data privacy
-
-- **No data leaves your machine.** The app runs 100% locally.
-- **CSV files are gitignored** (`*.csv`, `*.CSV`) — you cannot accidentally commit your financial data to GitHub.
-- No analytics, no telemetry, no external API calls.
-
----
-
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| `streamlit` | Web app framework |
-| `pandas` | CSV parsing, date filtering, aggregation |
-| `plotly` | Interactive charts |
-| `numpy` | Numerical operations |
-
----
-
-## Supported action types
-
-The app correctly classifies every row type in Trading212 exports:
-
-| Action | Category |
-|---|---|
-| Market buy / Limit buy | `buy` |
-| Market sell / Limit sell | `sell` — P&L from `Result` column |
-| Dividend (Dividend) | `dividend` |
-| Interest on cash / Lending interest | `interest` |
-| Deposit | `deposit` |
-| Withdrawal | `withdrawal` |
-| Currency conversion | `fx_conversion` |
-| Card debit / Card credit | `card_debit` / `card_credit` |
-| Spending cashback | `cashback` |
-
----
+The backend parsing engine cleanly isolates the following CSV row identities:
+- Market / Limit Buys (`buy`)
+- Market / Limit Sells (`sell`)
+- Dividends & Withholding Tax (`dividend`)
+- Interest on Cash / Lending Interest (`interest`)
+- Deposits & Withdrawals (`deposit` / `withdrawal`)
+- Currency Conversion (`fx_conversion`)
+- Debit Card Spending (`card_debit`)
+- Card Refunds / Credits (`card_credit`)
+- Spending Cashback (`cashback`)
 
 ## License
-
-MIT — free to use and modify.
+MIT — free to use, modify, and distribute.
