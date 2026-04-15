@@ -22,7 +22,8 @@ While the native Trading212 app is excellent for execution, its analytics are ba
 ## 📊 Comprehensive Feature Breakdown
 
 ### 🏦 1. Main Dashboard & Portfolio Tracking
-![Main Dashboard Breakdown](assets/chart.png)  
+![Main Dashboard Breakdown](assets/photo.png)  
+![Portfolio Growth Chart](assets/chart.png)  
 - **Main Progress Timeline**: A massive Total Portfolio Value Tracker showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest layered together.
 
 ### 📅 2. Realized P&L Timeline
