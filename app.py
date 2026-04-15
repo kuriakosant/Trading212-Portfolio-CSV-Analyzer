@@ -535,6 +535,20 @@ export_placeholder.download_button(
 )
 
 # ---------------------------------------------------------------------------
+# Net Total Yield Header
+# ---------------------------------------------------------------------------
+
+eur_components = summary["div_net_eur"] + summary["interest_eur"] + summary["cashback_eur"]
+usd_components = summary.get("interest_usd", 0) + summary["net_pnl"]
+net_total_yield_usd = usd_components + (eur_components / 0.86) # Fixed $1 = €0.86 rate
+
+yield_accent = "accent-green" if net_total_yield_usd >= 0 else "accent-red"
+st.markdown(cards_row([
+    card("NET TOTAL YIELD (USD)", f"${net_total_yield_usd:+,.2f}", 
+         "Total Account Profit (Trades + Interest + Dividends + Cashback). Rate: 0.86 EUR = 1 USD", "🌍", yield_accent)
+]), unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
 # Metric cards — Row 1: P&L
 # ---------------------------------------------------------------------------
 
@@ -597,7 +611,7 @@ if not prog_df.empty:
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades"]
+tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades", "🧾 Fees & Taxes"]
 if show_card_spending:
     tab_names.append("💳 Card Spending")
 
@@ -900,9 +914,28 @@ with tabs[6]:
                            f"trades_{start_date}_{end_date}.csv", "text/csv")
 
 
-# ── Tab 8 : Card Spending (optional) ─────────────────────────────────────────
+# ── Tab 8 : Fees & Taxes ───────────────────────────────────────────────────
+with tabs[7]:
+    section("🧾 Analytical Breakdown of Taxes & Fees")
+    fees_breakdown = summary.get("fees_breakdown", {})
+    if not fees_breakdown:
+        st.markdown("<div class='info-callout'>No fees or taxes paid in this period.</div>", unsafe_allow_html=True)
+    else:
+        # Create standard metric cards for each fee type found
+        st.markdown(cards_row([
+            card(k, f"{fmt_usd(v, False)}", "Total analytical cost", "💸", "accent-red") if "usd" in k.lower() else card(k, f"{fmt_eur(v)}", "Total analytical cost", "💸", "accent-red")
+            for k, v in fees_breakdown.items()
+        ]), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(cards_row([
+            card("Total Cumulative Fees", fmt_eur(summary.get("total_fees", 0)), "Sum of all non-trading expenses", "🧾", "accent-amber")
+        ]), unsafe_allow_html=True)
+        
+
+# ── Tab 9 : Card Spending (optional) ─────────────────────────────────────────
 if show_card_spending:
-    with tabs[7]:
+    with tabs[8]:
         card_df = df[df["_category"] == "card_debit"][
             ["Time", "Total", "Currency (Total)", "Merchant name", "Merchant category"]
         ].copy()

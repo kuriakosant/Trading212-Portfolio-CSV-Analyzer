@@ -103,7 +103,7 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         "No. of shares", "Price / share", "Exchange rate", "Result", "Total",
         "Withholding tax", "Finra fee", "Currency conversion from amount",
         "Currency conversion to amount", "Currency conversion fee",
-        "French transaction tax",
+        "French transaction tax", "Stamp duty reserve tax", "UK PTM Levy"
     ]
     for col in numeric_cols:
         if col in df.columns:
@@ -161,6 +161,19 @@ def compute_summary(df: pd.DataFrame) -> dict:
     total_withdrawn = float(withdrawals["Total"].fillna(0).abs().sum())
     total_card_spent= float(card_debits["Total"].fillna(0).abs().sum())
 
+    # Calculate aggregate fees
+    fee_cols = [
+        "Withholding tax", "Finra fee", "Currency conversion fee",
+        "French transaction tax", "Stamp duty reserve tax", "UK PTM Levy"
+    ]
+    fees_breakdown = {}
+    total_fees = 0.0
+    for col in fee_cols:
+        val = float(df.get(col, pd.Series(dtype=float)).fillna(0).abs().sum())
+        if val > 0:
+            fees_breakdown[col] = val
+            total_fees += val
+
     n_sells           = len(sells)
     n_wins            = int((sells_result > 0).sum())
     n_losses          = int((sells_result < 0).sum())
@@ -189,6 +202,8 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_interest": len(interests),
         "n_deposits": len(deposits),
         "n_withdrawals": len(withdrawals),
+        "fees_breakdown": fees_breakdown,
+        "total_fees": total_fees,
     }
 
 import io
