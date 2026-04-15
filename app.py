@@ -10,6 +10,7 @@ import time
 
 import analyzer
 import charts
+import io
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -213,9 +214,11 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 .upload-title { font-size: 1.1rem; font-weight: 600; color: #e2e4f0; margin: 0.5rem 0 0.25rem; }
 .upload-sub { font-size: 0.82rem; color: rgba(226,228,240,0.4); }
 
-/* ── Frequency pill row ── */
-div[data-testid="stHorizontalBlock"] .stRadio > label { display: none; }
-.stRadio [data-testid="stMarkdownContainer"] p { display: none; }
+/* ── Empty CSS cleared ── */
+
+.card {
+    animation: textCinematic 0.6s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
 
 /* ── Date range badge ── */
 .date-badge {
@@ -395,6 +398,29 @@ def section(label: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# File Uploader State Management
+# ---------------------------------------------------------------------------
+if "file_data" not in st.session_state:
+    st.session_state.file_data = []
+
+def sync_uploads():
+    w_center = st.session_state.get("center_uploader")
+    w_sidebar = st.session_state.get("sidebar_uploader")
+    
+    files = w_center if w_center else w_sidebar
+    if not files:
+        st.session_state.file_data = []
+        return
+        
+    cached = []
+    for f in files:
+        clone = io.BytesIO(f.getvalue())
+        clone.name = getattr(f, "name", "upload.csv")
+        cached.append(clone)
+    st.session_state.file_data = cached
+
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
@@ -413,18 +439,21 @@ with st.sidebar:
     st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Dashboard</div>", unsafe_allow_html=True)
     page_selection = st.radio(
         "Navigation",
-        ["📈 Portfolio Dashboard", "💳 Card Spending Analysis"],
+        ["🏦 Portfolio Dashboard", "💳 Card Spending Analysis"],
         label_visibility="collapsed"
     )
 
     st.divider()
 
-    uploaded_files = st.file_uploader(
-        "UPLOAD CSV FILES",
-        type=["csv"],
-        accept_multiple_files=True,
-        help="Export from Trading212 → History → Download icon. Supports multiple files.",
-    )
+    if getattr(st.session_state, "file_data", []):
+        st.file_uploader(
+            "UPLOAD CSV FILES",
+            type=["csv"],
+            accept_multiple_files=True,
+            key="sidebar_uploader",
+            on_change=sync_uploads,
+            help="Export from Trading212 → History → Download icon. Supports multiple files.",
+        )
 
 
     st.divider()
@@ -471,7 +500,7 @@ else:
 # Empty state
 # ---------------------------------------------------------------------------
 
-if not uploaded_files:
+if not getattr(st.session_state, "file_data", []):
     st.markdown("""
     <br>
     <div style="font-size:2.5rem;margin-bottom:0.1rem;text-align:center;">📂</div>
@@ -481,6 +510,15 @@ if not uploaded_files:
     You can upload multiple files (e.g. 2024 + 2025) and they'll be merged automatically.
     </div>
     """, unsafe_allow_html=True)
+
+    st.file_uploader(
+        "Main Center Upload Zone", 
+        type=["csv"], 
+        accept_multiple_files=True, 
+        key="center_uploader",
+        on_change=sync_uploads,
+        label_visibility="collapsed"
+    )
 
     # Preview skeleton cards
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -512,7 +550,7 @@ for i in range(0, 101, 6):
 loading_text.empty()
 pbar_container.empty()
 
-df_all = load_data(uploaded_files)
+df_all = load_data(st.session_state.file_data)
 
 # Dynamic Date Bounds based on uploaded actual CSV date range
 min_date = df_all["Time"].min().date() if not df_all.empty else date(2020, 1, 1)
@@ -614,22 +652,6 @@ st.markdown(cards_row([
 ]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Total Portfolio Progress (Main Yield Chart)
-# ---------------------------------------------------------------------------
-
-section("📈 Total Portfolio Value Tracker")
-prog_df = analyzer.portfolio_progress_daily(df)
-if not prog_df.empty:
-    with st.expander("⚙️ Chart Settings & Toggles", expanded=False):
-        col1, col2, col3, col4 = st.columns(4)
-        show_dep = col1.checkbox("Show Net Deposits", value=True)
-        show_pnl = col2.checkbox("Show Cumulative P&L", value=True)
-        show_div = col3.checkbox("Show Dividends", value=True)
-        show_int = col4.checkbox("Show Interest", value=True)
-    
-    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int), use_container_width=True)
-
-# ---------------------------------------------------------------------------
 # Metric cards — Row 1: P&L
 # ---------------------------------------------------------------------------
 
@@ -671,6 +693,23 @@ st.markdown(cards_row([
     card("Net Deposited",     fmt_eur(net_dep),
          f"In: {fmt_eur(summary['total_deposited_eur'])} / Out: {fmt_eur(summary['total_withdrawn_eur'])}", "🏧", "accent-gray"),
 ]), unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Total Portfolio Progress (Main Yield Chart)
+# ---------------------------------------------------------------------------
+
+section("📈 Total Portfolio Value Tracker")
+prog_df = analyzer.portfolio_progress_daily(df)
+if not prog_df.empty:
+    with st.expander("⚙️ Chart Settings & Toggles", expanded=False):
+        col_m, col1, col2 = st.columns([0.4, 0.3, 0.3])
+        chart_mode = col_m.radio("Chart Type", ["Line (Stacked Area)", "Candlestick"], horizontal=True, label_visibility="collapsed")
+        show_dep = col1.checkbox("Show Net Deposits", value=True)
+        show_pnl = col1.checkbox("Show Cumulative P&L", value=True)
+        show_div = col2.checkbox("Show Dividends", value=True)
+        show_int = col2.checkbox("Show Interest", value=True)
+    
+    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int, chart_mode), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Tabs

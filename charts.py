@@ -787,7 +787,7 @@ def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
 # 12. Total Portfolio Progress area chart
 # ---------------------------------------------------------------------------
 
-def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True, show_div: bool = True, show_int: bool = True) -> go.Figure:
+def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True, show_div: bool = True, show_int: bool = True, chart_mode: str = "Line") -> go.Figure:
     """
     Stacked/Overlaid area chart showing the growth of net deposits and P&L.
     """
@@ -804,6 +804,27 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
     if show_int: total_line += prog_df["Daily Interest"].fillna(0)
 
     # We stack Net Deposits + P&L + Divs + Interest
+    if chart_mode == "Candlestick":
+        open_arr = total_line.shift(1).fillna(total_line)
+        close_arr = total_line
+        df_ohlc = pd.DataFrame({"open": open_arr, "close": close_arr})
+        high_arr = df_ohlc.max(axis=1) * 1.002
+        low_arr = df_ohlc.min(axis=1) * 0.998
+        
+        fig.add_trace(go.Candlestick(
+            x=prog_df["Date"].astype(str),
+            open=open_arr,
+            high=high_arr,
+            low=low_arr,
+            close=close_arr,
+            name="Daily Value",
+            increasing_line_color=C_GREEN, increasing_fillcolor=C_GREEN,
+            decreasing_line_color=C_RED, decreasing_fillcolor=C_RED
+        ))
+        fig.update_layout(xaxis_rangeslider_visible=False, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig.update_yaxes(title_text="Tracked Value ($)")
+        return fig
+
     if show_dep:
         fig.add_trace(go.Scatter(
             x=prog_df["Date"].astype(str), y=prog_df["Net Deposits"],
