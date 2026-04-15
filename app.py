@@ -588,13 +588,13 @@ if page_selection == "💳 Card Spending Analysis":
     
     _, center_col, _ = st.columns([0.1, 0.8, 0.1])
     with center_col:
-        st.plotly_chart(charts.chart_spending_timeline(metrics["monthly"]), use_container_width=True)
+        st.plotly_chart(charts.chart_spending_timeline(metrics["monthly"]), use_container_width=True, key="spending_timeline")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(charts.chart_spending_category_donut(metrics["categories"]), use_container_width=True)
+        st.plotly_chart(charts.chart_spending_category_donut(metrics["categories"]), use_container_width=True, key="spending_donut")
     with col2:
-        st.plotly_chart(charts.chart_top_merchants(metrics["merchants"]), use_container_width=True)
+        st.plotly_chart(charts.chart_top_merchants(metrics["merchants"]), use_container_width=True, key="top_merchants")
         
     # Halt execution here so standard portfolio UI below this isn't rendered
     st.stop()
@@ -699,7 +699,7 @@ if not prog_df.empty:
         show_div = col2.checkbox("Show Dividends", value=True)
         show_int = col2.checkbox("Show Interest", value=True)
     
-    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int, chart_mode), use_container_width=True)
+    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int, chart_mode), use_container_width=True, key="total_portfolio")
 
 # ---------------------------------------------------------------------------
 # Tabs
@@ -723,7 +723,7 @@ with tabs[0]:
     freq_code  = analyzer.FREQ_MAP[freq_label]
     timeline   = analyzer.pnl_timeline(df, freq_code)
 
-    st.plotly_chart(charts.chart_pnl_timeline(timeline, freq_label), use_container_width=True)
+    st.plotly_chart(charts.chart_pnl_timeline(timeline, freq_label), use_container_width=True, key="pnl_timeline")
 
     # Quick stats below chart
     if not timeline.empty:
@@ -745,14 +745,14 @@ with tabs[0]:
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.plotly_chart(charts.chart_income_pie(summary), use_container_width=True)
+        st.plotly_chart(charts.chart_income_pie(summary), use_container_width=True, key="income_pie")
     with col_b:
-        st.plotly_chart(charts.chart_deposits_vs_pnl(df), use_container_width=True)
+        st.plotly_chart(charts.chart_deposits_vs_pnl(df), use_container_width=True, key="deposits_vs_pnl")
 
 
 # ── Tab 2 : Monthly summary ──────────────────────────────────────────────────
 with tabs[1]:
-    st.plotly_chart(charts.chart_monthly_summary(monthly_df), use_container_width=True)
+    st.plotly_chart(charts.chart_monthly_summary(monthly_df), use_container_width=True, key="monthly_summary")
 
     if not monthly_df.empty:
         section("Month-by-Month Details")
@@ -766,7 +766,7 @@ with tabs[1]:
 
 # ── Tab 3 : Tickers ──────────────────────────────────────────────────────────
 with tabs[2]:
-    st.plotly_chart(charts.chart_top_tickers(ticker_df), use_container_width=True)
+    st.plotly_chart(charts.chart_top_tickers(ticker_df), use_container_width=True, key="top_tickers")
 
     if not ticker_df.empty:
         section("Full Ticker P&L Breakdown")
@@ -816,9 +816,9 @@ with tabs[3]:
         ]), unsafe_allow_html=True)
 
         # ── Overview charts row ────────────────────────────────
-        st.plotly_chart(charts.chart_company_pnl_bars(company_df), use_container_width=True)
+        st.plotly_chart(charts.chart_company_pnl_bars(company_df), use_container_width=True, key="company_pnl_bars")
 
-        st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True)
+        st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True, key="company_bubble")
 
         # ── Compare section ───────────────────────────────────
         section("⚖️ Compare Companies")
@@ -832,7 +832,7 @@ with tabs[3]:
             placeholder="Choose tickers…",
         )
         if compare_sel:
-            st.plotly_chart(charts.chart_company_compare(df, compare_sel), use_container_width=True)
+            st.plotly_chart(charts.chart_company_compare(df, compare_sel), use_container_width=True, key="company_compare")
 
         # ── Drill-down: single company ─────────────────────────
         section("🔍 Company Drill-Down")
@@ -871,7 +871,7 @@ with tabs[3]:
 
             history = analyzer.company_trade_history(df, drill_ticker)
             st.plotly_chart(charts.chart_company_timeline(history, drill_ticker),
-                            use_container_width=True)
+                            use_container_width=True, key="company_timeline")
 
             # Individual trade log
             section(f"📋 {drill_ticker} — All Trades")
@@ -926,7 +926,7 @@ with tabs[4]:
                  "🏛️", "accent-red"),
         ]), unsafe_allow_html=True)
 
-        st.plotly_chart(charts.chart_dividend_growth(div_series), use_container_width=True)
+        st.plotly_chart(charts.chart_dividend_growth(div_series), use_container_width=True, key="dividend_growth")
 
         section("Individual Dividend Payments")
         disp = div_series.copy()
@@ -955,7 +955,7 @@ with tabs[5]:
         st.markdown("<div class='info-callout'>No interest payments found in the selected period.</div>",
                     unsafe_allow_html=True)
     else:
-        st.plotly_chart(charts.chart_interest_growth(int_series), use_container_width=True)
+        st.plotly_chart(charts.chart_interest_growth(int_series), use_container_width=True, key="interest_growth")
 
         section("Interest Payment Log")
         disp = int_series.copy()

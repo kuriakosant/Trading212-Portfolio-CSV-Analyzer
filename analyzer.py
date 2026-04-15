@@ -99,6 +99,17 @@ def load_csvs(uploaded_files) -> pd.DataFrame:
 
 def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip() for c in df.columns]
+
+    # Backward compatibility: older T212 exports (e.g. 2024) natively omit P&L columns.
+    # Instantiate them safely as 0.0 before any downstream series aggregations fire.
+    missing_criticals = [
+        "Result", "Result (EUR)", "Result (USD)",
+        "Withholding tax", "Withholding tax (EUR)", "Withholding tax (USD)"
+    ]
+    for col in missing_criticals:
+        if col not in df.columns:
+            df[col] = 0.0
+
     df["Time"] = pd.to_datetime(df["Time"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
     numeric_cols = [
         "No. of shares", "Price / share", "Exchange rate", "Result", "Total",
