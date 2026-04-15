@@ -23,7 +23,7 @@ While the native Trading212 app is excellent for execution, its analytics are ba
 
 ### 🏦 1. Main Dashboard & Portfolio Tracking
 ![Main Dashboard Breakdown](assets/photo.png)  
-![Portfolio Growth Chart](assets/chart.png)  
+![Portfolio Growth Chart](assets/CHART.png)  
 - **Main Progress Timeline**: A massive Total Portfolio Value Tracker showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest layered together.
 
 ### 📅 2. Realized P&L Timeline
@@ -42,7 +42,7 @@ While the native Trading212 app is excellent for execution, its analytics are ba
 
 ### 💵 5. Dividends & Interest Tracking
 ![Dividends Tracker](assets/dividends.png)  
-![Interest Tracker](assets/interest.png)  
+![Interest Tracker](assets/INTEREST.png)  
 - **Passive Income Focus**: Watch your compound passive income grow with step-charts, cleanly splitting EUR and USD interest payments while tracking withholding taxes.
 
 ### 💳 6. Trading212 Card Spending Analyzer
