@@ -215,7 +215,7 @@ def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date
     Sheet 1: High-level Portfolio Total Overview
     Sheet 2: Month-by-Month Performance History
     """
-    net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
+    net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"] - summary.get("total_card_spent_eur", 0)
     total_return = summary["net_pnl"] + summary["div_net_eur"] + summary["interest_eur"] + summary.get("interest_usd", 0) + summary["cashback_eur"]
     
     # Overview Data
@@ -544,11 +544,13 @@ def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
     all_days = pd.date_range(start_date, end_date, freq="D")
     
     # helper for daily aggregation
-    def get_daily_series(condition, col="Total"):
+    def get_daily_series(condition, col="Total", force_abs=False):
         sub = df[condition].copy()
         if sub.empty:
             return pd.Series(0, index=all_days)
         sub["Date"] = sub["Time"].dt.date
+        if force_abs:
+            sub[col] = sub[col].abs()
         return sub.groupby("Date")[col].sum().reindex(all_days.date, fill_value=0)
 
     # Note: deposits and withdrawals should be accumulated.
@@ -556,8 +558,9 @@ def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
     # but the primary currency (USD/EUR) is usually dominant in Total depending on user.
     # Here, we use the `Result` for P&L and `Total` for cash flows, ensuring withdrawals are negative.
 
-    dep = get_daily_series(df["_category"] == "deposit", "Total")
-    wdr = get_daily_series(df["_category"] == "withdrawal", "Total")
+    dep = get_daily_series(df["_category"] == "deposit", "Total", force_abs=True)
+    wdr = get_daily_series(df["_category"] == "withdrawal", "Total", force_abs=True)
+    crd = get_daily_series(df["_category"] == "card_debit", "Total", force_abs=True)
     
     # Realized P&L
     pnl = get_daily_series(df["_category"] == "sell", "Result")
@@ -571,6 +574,7 @@ def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
     daily_df = pd.DataFrame({
         "Deposits": dep,
         "Withdrawals": wdr,
+        "Card_Spending": crd,
         "Daily P&L": pnl,
         "Daily Dividends": divs,
         "Daily Interest": ints
@@ -578,12 +582,8 @@ def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
     
     # Add everything cumulatively
     res = daily_df.cumsum()
-    # Net deposits: deposits minus withdrawals (assuming withdrawals in CSV Total column are positive, if negative then + wdr)
-    # Trading212 lists withdrawals with a positive Total value typically? Wait, deposits have positive Total?
-    # Let's assume deposits and withdrawals are positive absolutes, or use 'Total' sum and adjust.
-    # Usually: Deposit Total > 0. Withdrawal Total > 0? Actually Trading212 withdrawal 'Total' is positive.
-    # We will subtract withdrawals.
-    res["Net Deposits"] = res["Deposits"] - res["Withdrawals"]
+    # Net deposits: deposits minus withdrawals minus card spending
+    res["Net Deposits"] = res["Deposits"] - res["Withdrawals"] - res["Card_Spending"]
     
     res["Total Value Tracked"] = res["Net Deposits"] + res["Daily P&L"] + res["Daily Dividends"] + res["Daily Interest"]
     

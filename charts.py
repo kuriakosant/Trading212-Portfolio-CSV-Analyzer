@@ -884,10 +884,10 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
 # ---------------------------------------------------------------------------
 
 def chart_spending_timeline(df_monthly: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
     if df_monthly.empty:
-        return fig.update_layout(**_base_layout("No Spending Data"))
+        return _empty("No Spending Data")
 
+    fig = _fig("📅 Monthly Card Spending")
     fig.add_trace(go.Bar(
         x=df_monthly["Month"].astype(str).str[:7],
         y=df_monthly["Amount"],
@@ -899,7 +899,6 @@ def chart_spending_timeline(df_monthly: pd.DataFrame) -> go.Figure:
     ))
 
     fig.update_layout(
-        **_base_layout("📅 Monthly Card Spending"),
         xaxis=dict(type='category'),
         yaxis=dict(title="Amount (€)", gridcolor="rgba(255,255,255,0.05)")
     )
@@ -907,9 +906,10 @@ def chart_spending_timeline(df_monthly: pd.DataFrame) -> go.Figure:
 
 
 def chart_spending_category_donut(df_cat: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
     if df_cat.empty:
-        return fig.update_layout(**_base_layout("No Category Data"))
+        return _empty("No Category Data")
+
+    fig = _fig("🛒 Spending by Category")
 
     # Cap to top 8, sum rest into "Other"
     top_n = 8
@@ -925,22 +925,21 @@ def chart_spending_category_donut(df_cat: pd.DataFrame) -> go.Figure:
         labels=plot_df["Category"],
         values=plot_df["Amount"],
         hole=0.7,
-        marker=dict(colors=[C_PURPLE, C_BLUE, C_CYAN, C_TEAL, C_GREEN, C_AMBER, C_RED, C_TEXT, C_BG_CARD]),
+        marker=dict(colors=[C_PURPLE, C_BLUE, C_TEAL, C_GREEN, C_AMBER, C_RED, C_TEXT, C_PANEL]),
         textinfo='percent+label',
         textposition='outside',
         hovertemplate="<b>%{label}</b><br>Amount: <b>€%{value:,.2f}</b><extra></extra>"
     ))
 
-    fig.update_layout(**_base_layout("🛒 Spending by Category"))
     fig.update_layout(showlegend=False)
     return fig
 
 
 def chart_top_merchants(df_merch: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
     if df_merch.empty:
-        return fig.update_layout(**_base_layout("No Merchant Data"))
+        return _empty("No Merchant Data")
 
+    fig = _fig("🏆 Top 10 Merchants")
     # Top 10 merchants
     top_df = df_merch.head(10).copy()
     top_df = top_df.sort_values(by="Amount", ascending=True)  # horizontal bar sorts bottom-to-top
@@ -956,7 +955,6 @@ def chart_top_merchants(df_merch: pd.DataFrame) -> go.Figure:
     ))
 
     fig.update_layout(
-        **_base_layout("🏆 Top 10 Merchants"),
         xaxis=dict(title="Amount (€)", gridcolor="rgba(255,255,255,0.05)"),
         yaxis=dict(autorange=True)
     )

@@ -404,21 +404,18 @@ if "file_data" not in st.session_state:
     st.session_state.file_data = []
 
 def sync_uploads():
-    w_center = st.session_state.get("center_uploader")
     w_sidebar = st.session_state.get("sidebar_uploader")
     
-    files = w_center if w_center else w_sidebar
-    if not files:
+    if not w_sidebar:
         st.session_state.file_data = []
         return
         
     cached = []
-    for f in files:
+    for f in w_sidebar:
         clone = io.BytesIO(f.getvalue())
         clone.name = getattr(f, "name", "upload.csv")
         cached.append(clone)
     st.session_state.file_data = cached
-
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -445,15 +442,14 @@ with st.sidebar:
 
     st.divider()
 
-    if getattr(st.session_state, "file_data", []):
-        st.file_uploader(
-            "UPLOAD CSV FILES",
-            type=["csv"],
-            accept_multiple_files=True,
-            key="sidebar_uploader",
-            on_change=sync_uploads,
-            help="Export from Trading212 → History → Download icon. Supports multiple files.",
-        )
+    st.file_uploader(
+        "UPLOAD CSV FILES",
+        type=["csv"],
+        key="sidebar_uploader",
+        accept_multiple_files=True,
+        on_change=sync_uploads,
+        help="Export from Trading212 → History → Download icon. Supports multiple files.",
+    )
 
 
     st.divider()
@@ -478,7 +474,7 @@ with st.sidebar:
 # Dynamic Hero header
 # ---------------------------------------------------------------------------
 
-if page_selection == "📈 Portfolio Dashboard":
+if page_selection == "🏦 Portfolio Dashboard":
     st.markdown("""
     <div class="hero">
         <div class="hero-badge">📈 Portfolio Analytics</div>
@@ -507,18 +503,9 @@ if not getattr(st.session_state, "file_data", []):
     <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your Trading212 CSV exports</div>
     <div style="font-size:0.85rem; text-align:center; color: rgba(226,228,240,0.4); margin-bottom: 1.5rem;">
     Go to Trading212 → History → Download icon → Export CSV<br>
-    You can upload multiple files (e.g. 2024 + 2025) and they'll be merged automatically.
+    Please use the file uploader mapped in your left Sidebar to begin!
     </div>
     """, unsafe_allow_html=True)
-
-    st.file_uploader(
-        "Main Center Upload Zone", 
-        type=["csv"], 
-        accept_multiple_files=True, 
-        key="center_uploader",
-        on_change=sync_uploads,
-        label_visibility="collapsed"
-    )
 
     # Preview skeleton cards
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -535,8 +522,10 @@ if not getattr(st.session_state, "file_data", []):
 # Load & filter
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner=False)
 def load_data(files):
+    # Only read if fresh, ensuring we do seek(0) safely
+    for f in files:
+        f.seek(0)
     return analyzer.load_csvs(files)
 
 # Dynamic Loading Feedback
@@ -678,7 +667,8 @@ st.markdown(cards_row([
 section("💰 Passive Income & Cash Flow")
 
 int_total = summary["interest_eur"] + summary.get("interest_usd", 0)
-net_dep   = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
+total_out = summary["total_withdrawn_eur"] + summary.get("total_card_spent_eur", 0)
+net_dep   = summary["total_deposited_eur"] - total_out
 st.markdown(cards_row([
     card("Dividends (Net)",   fmt_eur(summary["div_net_eur"], 4),
          f"Gross: {fmt_eur(summary['div_gross_eur'], 4)}", "💵", "accent-purple"),
@@ -691,7 +681,7 @@ st.markdown(cards_row([
     card("Cashback",          fmt_eur(summary["cashback_eur"], 4),
          "Card rewards", "🎁", "accent-blue"),
     card("Net Deposited",     fmt_eur(net_dep),
-         f"In: {fmt_eur(summary['total_deposited_eur'])} / Out: {fmt_eur(summary['total_withdrawn_eur'])}", "🏧", "accent-gray"),
+         f"In: {fmt_eur(summary['total_deposited_eur'])} / Out: {fmt_eur(total_out)} (includes spends)", "🏧", "accent-gray"),
 ]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
