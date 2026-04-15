@@ -1,6 +1,6 @@
 # Trading212 Portfolio & Card Analytics Terminal
 
-> *"A powerful, private, and deeply analytical dashboard that unpacks the dense CSV export data from Trading212. It surfaces hidden metrics—like trade win rates, exact aggregate fees, compound dividend trajectories, and structural visa/mastercard spending patterns—that the native Trading212 app simply doesn't show you."*
+> *"Local, secure portfolio and spending analyzer for Trading212. Built with Streamlit, it transforms raw CSV history exports into powerful visual insights, detailing trade win rates, Interest , Dividends , P&L efficiency, and granular merchant spending that the native app doesn't show you.."*
 
 ![Main Dashboard](assets/photo.png)
 
@@ -21,23 +21,36 @@ While the native Trading212 app is excellent for execution, its analytics are ba
 
 ## 📊 Comprehensive Feature Breakdown
 
-### 🏦 1. Portfolio Tracking & Yield
+### 🏦 1. Main Dashboard & Portfolio Tracking
+![Main Dashboard Breakdown](assets/chart.png)  
 - **Main Progress Timeline**: A massive Total Portfolio Value Tracker showing the cumulative growth of your Net Deposits, Realized P&L, Dividends, and Interest layered together.
-- **P&L Timeline**: Deep dive into your trading performance with Daily, Weekly, Monthly, or Quarterly resolutions. The top area chart tracks cumulative P&L growth, while bottom bars show period-by-period returns.
-- **Income Deep-Dives**: Separate tabs for Dividends and Interest. Watch your compound passive income grow with step-charts, and track withholding taxes cleanly.
 
-### 🏢 2. Ticker & Company Intelligence
-- **Market Rankings**: See your highest win-rate ticker, your most traded company, and your absolute best/worst performers. 
-- **Trades vs. P&L Matrix**: An interactive bubble chart mapping the number of trades against Net P&L. Bubble size denotes total capital deployed, while the color gradient (Red to Green) represents your absolute win-rate.
-- **Multi-Line Comparables**: Select multiple companies to stack their running P&L timelines onto a single interactive chart.
-- **Granular Drill-Downs**: Select any individual stock to reveal its complete sequence of buys and sells on a single timeline line, visually marking your entries (grey) and exits (red/green).
+### 📅 2. Realized P&L Timeline
+![P&L Timeline](assets/PNL.png)  
+- **Dynamic Resolution**: Deep dive into your trading performance with Daily, Weekly, Monthly, or Quarterly resolutions. The top area chart tracks cumulative P&L growth, while bottom bars show period-by-period returns.
 
-### 💳 3. Trading212 Card Spending Analyzer
+### 🏢 3. Companies Deep-Dive
+![Companies Market Overview](assets/Companies.png)  
+- **Trades vs. P&L Matrix**: An interactive bubble chart mapping the number of trades against Net P&L. Bubble size denotes total capital deployed, while the color gradient represents absolute win-rate.
+- **Market Rankings**: See your highest win-rate ticker, most traded company, and absolute best/worst performers. 
+
+### 🔍 4. Granular Company Drill-Down
+![Company Drill-Down](assets/company-drill-down.png)  
+- **Trade-by-Trade View**: Select any individual stock to reveal its complete sequence of buys and sells on a single interactive timeline.
+- **Multi-Line Comparables**: Select multiple companies to stack their running P&L timelines onto a single cross-comparison chart.
+
+### 💵 5. Dividends & Interest Tracking
+![Dividends Tracker](assets/dividends.png)  
+![Interest Tracker](assets/interest.png)  
+- **Passive Income Focus**: Watch your compound passive income grow with step-charts, cleanly splitting EUR and USD interest payments while tracking withholding taxes.
+
+### 💳 6. Trading212 Card Spending Analyzer
+![Card Spending Analytics](assets/spending.png)  
 The dashboard dynamically splits into a secondary "Card Spending" suite if it detects debit card activity within your CSVs.
 - **Monthly Velocity**: Bar charts tracking your day-to-day debit card burn rate.
 - **Merchant Profiling**: A horizontal leaderboard identifying your Top 10 most frequented merchants.
 - **Category Donut**: A breakdown of your spending by internal Visa/Mastercard categories (e.g., Retail, Groceries, Restaurants). 
-- **Cashback Metrics**: Fully integrates your 0.5% - 1.5% cashback rewards into your overarching portfolio returns.
+- **Cashback Metrics**: Fully integrates your cashback rewards into your overarching portfolio returns.
 
 ---
 
