@@ -21,6 +21,7 @@ WITHDRAWAL_ACTIONS = {"withdrawal"}
 FX_ACTIONS       = {"currency conversion"}
 CARD_DEBIT_ACTIONS  = {"card debit"}
 CARD_CREDIT_ACTIONS = {"card credit"}
+CASHBACK_ACTIONS    = {"spending cashback"}
 CASHBACK_ACTIONS = {"spending cashback"}
 
 FREQ_MAP = {
@@ -588,3 +589,56 @@ def portfolio_progress_daily(df: pd.DataFrame) -> pd.DataFrame:
     
     res = res.reset_index().rename(columns={"index": "Date"})
     return res
+
+
+# ---------------------------------------------------------------------------
+# Card Spending Deep Dive Extracts
+# ---------------------------------------------------------------------------
+def card_spending_deepdive(df: pd.DataFrame) -> dict:
+    """
+    Returns dataframes grouped by merchant, category, and monthly timeline
+    specifically for elements marked as 'card_debit'.
+    Note: 'Total' on debits is negative. We take abs() for charting.
+    """
+    debits = df[df["_category"] == "card_debit"].copy()
+    if debits.empty:
+        return {
+            "monthly": pd.DataFrame(), "categories": pd.DataFrame(), 
+            "merchants": pd.DataFrame(), "total_spent_raw": 0.0, 
+            "total_txns": 0, "avg_txn": 0.0
+        }
+        
+    # 1. Timeline (Monthly Spending)
+    debits["Month"] = debits["Time"].dt.to_period("M").dt.to_timestamp()
+    monthly = debits.groupby("Month")["Total"].sum().abs().reset_index()
+    monthly.rename(columns={"Total": "Amount"}, inplace=True)
+    
+    # 2. Categories
+    cat_col = "Merchant category" if "Merchant category" in debits.columns else "Category"
+    if cat_col in debits.columns:
+        cat_df = debits.groupby(cat_col)["Total"].sum().abs().reset_index()
+        cat_df.rename(columns={"Total": "Amount", cat_col: "Category"}, inplace=True)
+        cat_df = cat_df.sort_values(by="Amount", ascending=False)
+    else:
+        cat_df = pd.DataFrame(columns=["Category", "Amount"])
+
+    # 3. Merchants
+    merch_col = "Merchant name" if "Merchant name" in debits.columns else "Merchant"
+    if merch_col in debits.columns:
+        merch_df = debits.groupby(merch_col)["Total"].sum().abs().reset_index()
+        merch_df.rename(columns={"Total": "Amount", merch_col: "Merchant"}, inplace=True)
+        merch_df = merch_df.sort_values(by="Amount", ascending=False)
+    else:
+        merch_df = pd.DataFrame(columns=["Merchant", "Amount"])
+
+    total_spent = float(debits["Total"].sum())
+    
+    return {
+        "monthly": monthly,
+        "categories": cat_df,
+        "merchants": merch_df,
+        "total_spent_raw": abs(total_spent),
+        "total_txns": len(debits),
+        "avg_txn": abs(float(debits["Total"].mean()))
+    }
+

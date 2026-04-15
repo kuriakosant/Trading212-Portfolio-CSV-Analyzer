@@ -410,6 +410,13 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Dashboard</div>", unsafe_allow_html=True)
+    page_selection = st.radio(
+        "Navigation",
+        ["📈 Portfolio Dashboard", "💳 Card Spending Analysis"],
+        label_visibility="collapsed"
+    )
+
     st.divider()
 
     uploaded_files = st.file_uploader(
@@ -418,9 +425,6 @@ with st.sidebar:
         accept_multiple_files=True,
         help="Export from Trading212 → History → Download icon. Supports multiple files.",
     )
-
-    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Options</div>", unsafe_allow_html=True)
-    show_card_spending = st.checkbox("Card spending tab", value=False)
 
 
     st.divider()
@@ -442,16 +446,26 @@ with st.sidebar:
 
 
 # ---------------------------------------------------------------------------
-# Hero header
+# Dynamic Hero header
 # ---------------------------------------------------------------------------
 
-st.markdown("""
-<div class="hero">
-    <div class="hero-badge">📈 Portfolio Analytics</div>
-    <h1 class="hero-title">Trading212 Portfolio Analyzer</h1>
-    <p class="hero-sub">Upload your CSV exports · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
-</div>
-""", unsafe_allow_html=True)
+if page_selection == "📈 Portfolio Dashboard":
+    st.markdown("""
+    <div class="hero">
+        <div class="hero-badge">📈 Portfolio Analytics</div>
+        <h1 class="hero-title">Trading212 Portfolio Analyzer</h1>
+        <p class="hero-sub">Upload your CSV exports · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div class="hero">
+        <div class="hero-badge">💳 Card Analytics</div>
+        <h1 class="hero-title">Trading212 Card Spending</h1>
+        <p class="hero-sub">Analyze your Visa/Mastercard spending habits, view merchant breakdowns, and track monthly burn rates.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
 
 # ---------------------------------------------------------------------------
 # Empty state
@@ -523,6 +537,41 @@ df = analyzer.filter_by_date(df_all, start_date, end_date)
 if df.empty:
     st.warning(f"No transactions found between **{start_date}** and **{end_date}**.")
     st.stop()
+
+# ---------------------------------------------------------------------------
+# Sub-App Router
+# ---------------------------------------------------------------------------
+
+if page_selection == "💳 Card Spending Analysis":
+    metrics = analyzer.card_spending_deepdive(df)
+    
+    if metrics["total_txns"] == 0:
+        st.info("No card spending data found in this timeframe or CSV export.")
+        st.stop()
+        
+    section("📊 Overview")
+    top_merch_str = metrics["merchants"]["Merchant"].iloc[0] if not metrics["merchants"].empty else "N/A"
+    st.markdown(cards_row([
+        card("Total Spent", fmt_eur(metrics["total_spent_raw"]), f"{metrics['total_txns']} total transactions", "💳", "accent-blue"),
+        card("Average Txn", fmt_eur(metrics["avg_txn"]), "Per swipe", "🛍️", "accent-teal"),
+        card("Top Merchant", top_merch_str, "Most frequent destination", "🏆", "accent-purple"),
+    ]), unsafe_allow_html=True)
+    
+    st.markdown("<div style='margin-bottom:1rem;'></div>", unsafe_allow_html=True)
+    
+    _, center_col, _ = st.columns([0.1, 0.8, 0.1])
+    with center_col:
+        st.plotly_chart(charts.chart_spending_timeline(metrics["monthly"]), use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(charts.chart_spending_category_donut(metrics["categories"]), use_container_width=True)
+    with col2:
+        st.plotly_chart(charts.chart_top_merchants(metrics["merchants"]), use_container_width=True)
+        
+    # Halt execution here so standard portfolio UI below this isn't rendered
+    st.stop()
+
 
 # Pre-compute everything
 summary     = analyzer.compute_summary(df)
@@ -628,8 +677,6 @@ st.markdown(cards_row([
 # ---------------------------------------------------------------------------
 
 tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades", "🧾 Fees & Taxes"]
-if show_card_spending:
-    tab_names.append("💳 Card Spending")
 
 tabs = st.tabs(tab_names)
 
@@ -947,46 +994,3 @@ with tabs[7]:
         st.markdown(cards_row([
             card("Total Cumulative Fees", fmt_eur(summary.get("total_fees", 0)), "Sum of all non-trading expenses", "🧾", "accent-amber")
         ]), unsafe_allow_html=True)
-        
-
-# ── Tab 9 : Card Spending (optional) ─────────────────────────────────────────
-if show_card_spending:
-    with tabs[8]:
-        card_df = df[df["_category"] == "card_debit"][
-            ["Time", "Total", "Currency (Total)", "Merchant name", "Merchant category"]
-        ].copy()
-
-        if card_df.empty:
-            st.markdown("<div class='info-callout'>No card transactions in the selected period.</div>",
-                        unsafe_allow_html=True)
-        else:
-            card_df["Total"] = card_df["Total"].abs()
-            total_spent = summary["total_card_spent_eur"]
-
-            st.markdown(cards_row([
-                card("Total Card Spent", fmt_eur(total_spent),
-                     f"{len(card_df)} transactions", "💳", "accent-red"),
-            ]), unsafe_allow_html=True)
-
-            if "Merchant category" in card_df.columns:
-                by_cat = card_df.groupby("Merchant category")["Total"].sum().sort_values(ascending=False)
-                import plotly.graph_objects as go_local
-                cat_fig = go_local.Figure(go_local.Bar(
-                    x=by_cat.index, y=by_cat.values,
-                    marker_color=["#a78bfa"] * len(by_cat),
-                    marker_line_width=0,
-                    hovertemplate="<b>%{x}</b><br>Spent: €%{y:,.2f}<extra></extra>",
-                ))
-                cat_fig.update_layout(
-                    paper_bgcolor="#0a0b14", plot_bgcolor="#11121e",
-                    font=dict(color="#e2e4f0"), height=300,
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    title=dict(text="Spending by Category", font=dict(size=14)),
-                    xaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
-                    yaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
-                )
-                st.plotly_chart(cat_fig, use_container_width=True)
-
-            card_df["Time"] = card_df["Time"].dt.strftime("%b %d, %Y %H:%M")
-            st.dataframe(card_df.sort_values("Time", ascending=False).reset_index(drop=True),
-                         use_container_width=True, hide_index=True)
