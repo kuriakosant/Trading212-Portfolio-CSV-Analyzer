@@ -13,23 +13,23 @@ import numpy as np
 # Design tokens
 # ---------------------------------------------------------------------------
 
-C_BG       = "#0a0b14"
-C_PANEL    = "#11121e"
-C_BORDER   = "rgba(255,255,255,0.07)"
-C_GRID     = "rgba(255,255,255,0.05)"
+C_BG       = "#030305"
+C_PANEL    = "#07070a"
+C_BORDER   = "rgba(255,255,255,0.05)"
+C_GRID     = "rgba(255,255,255,0.03)"
 C_TEXT     = "#e2e4f0"
 C_MUTED    = "rgba(226,228,240,0.45)"
-C_GREEN    = "#22c55e"
-C_GREEN_DIM= "rgba(34,197,94,0.12)"
-C_RED      = "#f43f5e"
-C_RED_DIM  = "rgba(244,63,94,0.12)"
-C_BLUE     = "#38bdf8"
-C_BLUE_DIM = "rgba(56,189,248,0.12)"
-C_PURPLE   = "#a78bfa"
-C_PURPLE_DIM="rgba(167,139,250,0.12)"
-C_AMBER    = "#fbbf24"
-C_TEAL     = "#2dd4bf"
-C_TEAL_DIM = "rgba(45,212,191,0.12)"
+C_GREEN    = "#00ff88"
+C_GREEN_DIM= "rgba(0,255,136,0.15)"
+C_RED      = "#ff0055"
+C_RED_DIM  = "rgba(255,0,85,0.15)"
+C_BLUE     = "#00f0ff"
+C_BLUE_DIM = "rgba(0,240,255,0.15)"
+C_PURPLE   = "#b721ff"
+C_PURPLE_DIM="rgba(183,33,255,0.15)"
+C_AMBER    = "#ffaa00"
+C_TEAL     = "#00ffcc"
+C_TEAL_DIM = "rgba(0,255,204,0.15)"
 FONT       = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 
 BASE_LAYOUT = dict(
@@ -68,6 +68,7 @@ def _fig(title: str = "", height: int = 420) -> go.Figure:
             font=dict(family=FONT, size=15, color=C_TEXT),
             x=0, xanchor="left", pad=dict(l=4),
         ),
+        transition=dict(duration=600, easing="cubic-in-out"),
     )
     fig.update_layout(**layout)
     return fig
@@ -449,14 +450,14 @@ def chart_income_pie(summary: dict) -> go.Figure:
 
     fig = make_subplots(
         rows=1, cols=2,
-        column_widths=[0.48, 0.52],
+        column_widths=[0.45, 0.55],
         specs=[[{"type": "domain"}, {"type": "xy"}]],
-        horizontal_spacing=0.04,
+        horizontal_spacing=0.12,
     )
 
     # Left: donut — no text labels on slices, just hover
     fig.add_trace(go.Pie(
-        labels=labels, values=values, pull=pull, hole=0.56,
+        labels=labels, values=values, pull=pull, hole=0.65,
         marker=dict(colors=colors, line=dict(color=C_BG, width=3)),
         textinfo="none",
         hovertemplate="<b>%{label}</b><br>Amount: %{value:,.4f}<br>Share: %{percent}<extra></extra>",
@@ -490,7 +491,7 @@ def chart_income_pie(summary: dict) -> go.Figure:
     fig.update_xaxes(
         row=1, col=2,
         showgrid=False, zeroline=False, showticklabels=False,
-        range=[0, max(bar_values) * 1.45],  # padding so labels fit
+        range=[0, max(bar_values) * 1.55],  # padding so labels fit
     )
     fig.update_yaxes(
         row=1, col=2,
@@ -500,15 +501,16 @@ def chart_income_pie(summary: dict) -> go.Figure:
 
     profit_val = summary.get("gross_profit", 0)
     fig.update_layout(
-        title=dict(text="💰 Income Sources", font=dict(size=15, color=C_TEXT), x=0),
-        height=340,
+        title=dict(text="💰 Income Sources", font=dict(size=16, color=C_TEXT), x=0),
+        height=420,
         paper_bgcolor=C_BG,
         plot_bgcolor=C_BG,
         font=dict(family="Inter, sans-serif", color=C_TEXT),
         margin=dict(l=10, r=30, t=50, b=10),
+        transition=dict(duration=600, easing="cubic-in-out"),
         annotations=[dict(
-            text=f"<b>${profit_val:,.0f}</b><br><span style='font-size:11px'>trade profit</span>",
-            x=0.22, y=0.5, xref="paper", yref="paper",
+            text=f"<b>${profit_val:,.0f}</b><br><span style='font-size:12px'>trade profit</span>",
+            x=0.205, y=0.5, xref="paper", yref="paper",
             showarrow=False, font=dict(size=14, color=C_TEXT),
             align="center",
         )],

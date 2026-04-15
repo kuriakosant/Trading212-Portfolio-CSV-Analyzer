@@ -6,6 +6,7 @@ Premium dark Streamlit interface.
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
+import time
 
 import analyzer
 import charts
@@ -32,13 +33,13 @@ st.markdown("""
 /* ── Base ── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
-.stApp { background: #080910 !important; }
+.stApp { background: #030305 !important; }
 .main .block-container { padding: 2rem 2rem 4rem !important; max-width: 1600px; }
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #0d0e1a !important;
-    border-right: 1px solid rgba(255,255,255,0.06) !important;
+    background: #060608 !important;
+    border-right: 1px solid rgba(255,255,255,0.04) !important;
 }
 section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
@@ -49,13 +50,14 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
 /* ── Hero header ── */
 .hero {
-    background: linear-gradient(135deg, #0f0c29, #1a0533, #0d0e1a);
+    background: linear-gradient(135deg, #050508, #0a0a14, #050508);
     border: 1px solid rgba(167,139,250,0.15);
     border-radius: 20px;
     padding: 2rem 2.4rem;
     margin-bottom: 1.8rem;
     position: relative;
     overflow: hidden;
+    box-shadow: 0 4px 50px rgba(0,0,0,0.6);
 }
 .hero::before {
     content: "";
@@ -121,25 +123,31 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
 
 /* ── Metric cards ── */
 .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
     gap: 12px;
     margin-bottom: 0.5rem;
 }
 .card {
-    background: #11121e;
-    border: 1px solid rgba(255,255,255,0.07);
+    flex: 1 1 0;
+    min-width: 190px;
+    background: linear-gradient(180deg, #07070a, #030305);
+    border: 1px solid rgba(255,255,255,0.05);
     border-radius: 14px;
     padding: 1.1rem 1.2rem;
     position: relative;
     overflow: hidden;
-    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    transition: transform 0.25s cubic-bezier(0.1, 0.9, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease;
     cursor: default;
 }
 .card:hover {
-    transform: translateY(-3px);
-    border-color: rgba(255,255,255,0.14);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    transform: translateY(-4px) scale(1.02);
+    border-color: var(--accent, rgba(255,255,255,0.2));
+    box-shadow: 0 15px 45px rgba(0,0,0,0.8), 0 0 25px var(--accent-glow, transparent);
+    z-index: 10;
 }
 .card::before {
     content: "";
@@ -163,6 +171,9 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
     color: var(--val-color, #e2e4f0);
     line-height: 1.1;
     font-variant-numeric: tabular-nums;
+    animation: textCinematic 1s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+    display: inline-block;
+    text-shadow: 0 0 10px var(--accent-glow, transparent);
 }
 .card-sub {
     font-size: 0.72rem;
@@ -177,14 +188,16 @@ section[data-testid="stSidebar"] > div { padding-top: 1.5rem; }
     opacity: 0.35;
 }
 
-/* ── Accent color helpers ── */
-.accent-green  { --accent: rgba(34,197,94,0.6);  --val-color: #22c55e; }
-.accent-red    { --accent: rgba(244,63,94,0.6);  --val-color: #f43f5e; }
-.accent-blue   { --accent: rgba(56,189,248,0.6); --val-color: #38bdf8; }
-.accent-purple { --accent: rgba(167,139,250,0.6);--val-color: #a78bfa; }
-.accent-teal   { --accent: rgba(45,212,191,0.6); --val-color: #2dd4bf; }
-.accent-amber  { --accent: rgba(251,191,36,0.6); --val-color: #fbbf24; }
-.accent-gray   { --accent: rgba(226,228,240,0.2);--val-color: #e2e4f0; }
+/* ── Accent color helpers (Deep Neon) ── */
+.accent-green  { --accent: rgba(0,255,136,0.8);  --val-color: #00ff88; --accent-glow: rgba(0,255,136,0.3); }
+.accent-red    { --accent: rgba(255,0,85,0.8);   --val-color: #ff0055; --accent-glow: rgba(255,0,85,0.3); }
+.accent-blue   { --accent: rgba(0,240,255,0.8);  --val-color: #00f0ff; --accent-glow: rgba(0,240,255,0.3); }
+.accent-purple { --accent: rgba(183,33,255,0.8); --val-color: #b721ff; --accent-glow: rgba(183,33,255,0.3); }
+.accent-teal   { --accent: rgba(0,255,204,0.8);  --val-color: #00ffcc; --accent-glow: rgba(0,255,204,0.3); }
+.accent-amber  { --accent: rgba(255,170,0,0.8);  --val-color: #ffaa00; --accent-glow: rgba(255,170,0,0.3); }
+.accent-gray   { --accent: rgba(255,255,255,0.3);--val-color: #ffffff; --accent-glow: rgba(255,255,255,0.1); }
+.accent-glow-pulse { animation: pulseGlow 2.5s infinite alternate ease-in-out; }
+
 
 /* ── Upload zone ── */
 .upload-zone {
@@ -329,11 +342,21 @@ section[data-testid="stSidebar"] .stDateInput > div {
 
 /* ── Animations ── */
 @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
+    0%   { opacity: 0; transform: translateY(30px) scale(0.95); filter: blur(4px); }
+    100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
 }
-.cards-grid { animation: fadeUp 0.4s ease; }
-.hero { animation: fadeUp 0.35s ease; }
+@keyframes textCinematic {
+    0%   { opacity: 0; transform: translateY(15px); filter: blur(8px); letter-spacing: -2px; }
+    40%  { opacity: 0.8; transform: translateY(0); filter: blur(1px); letter-spacing: 1px; }
+    100% { opacity: 1; transform: translateY(0); filter: blur(0px); letter-spacing: normal; }
+}
+@keyframes pulseGlow {
+    0%   { box-shadow: 0 0 10px var(--accent-glow, transparent); border-color: rgba(255,255,255,0.05); }
+    100% { box-shadow: 0 0 35px var(--accent, transparent); border-color: var(--accent, rgba(255,255,255,0.3)); }
+}
+.cards-grid { animation: fadeUp 0.6s cubic-bezier(0.1, 0.9, 0.2, 1); }
+.hero { animation: fadeUp 0.5s cubic-bezier(0.1, 0.9, 0.2, 1); }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -396,46 +419,9 @@ with st.sidebar:
         help="Export from Trading212 → History → Download icon. Supports multiple files.",
     )
 
-    st.divider()
-
-    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Date Range</div>", unsafe_allow_html=True)
-
-    preset = st.selectbox(
-        "Quick Preset",
-        ["Custom", "This Month", "Last Month", "Last 3 Months",
-         "Last 6 Months", "This Year", "All Time"],
-        label_visibility="collapsed",
-    )
-
-    today = date.today()
-    if preset == "This Month":
-        d_start, d_end = today.replace(day=1), today
-    elif preset == "Last Month":
-        first_this = today.replace(day=1)
-        last_end   = first_this - timedelta(days=1)
-        d_start, d_end = last_end.replace(day=1), last_end
-    elif preset == "Last 3 Months":
-        d_start, d_end = (today - timedelta(days=90)).replace(day=1), today
-    elif preset == "Last 6 Months":
-        d_start, d_end = (today - timedelta(days=182)).replace(day=1), today
-    elif preset == "This Year":
-        d_start, d_end = today.replace(month=1, day=1), today
-    else:
-        d_start, d_end = date(2020, 1, 1), today
-
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("From", value=d_start, label_visibility="visible")
-    with col2:
-        end_date = st.date_input("To", value=d_end, label_visibility="visible")
-
-    if start_date > end_date:
-        st.error("Start must be before end date.")
-        st.stop()
-
-    st.divider()
     st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Options</div>", unsafe_allow_html=True)
     show_card_spending = st.checkbox("Card spending tab", value=False)
+
 
     st.divider()
     
@@ -473,15 +459,17 @@ st.markdown("""
 
 if not uploaded_files:
     st.markdown("""
-    <div class="upload-zone">
-        <div style="font-size:2.5rem;margin-bottom:0.5rem;">📂</div>
-        <div class="upload-title">Upload your Trading212 CSV exports</div>
-        <div class="upload-sub">Go to Trading212 → History → Download icon → Export CSV<br>
-        You can upload multiple files (e.g. 2024 + 2025) and they'll be merged automatically.</div>
+    <br>
+    <div style="font-size:2.5rem;margin-bottom:0.1rem;text-align:center;">📂</div>
+    <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your Trading212 CSV exports</div>
+    <div style="font-size:0.85rem; text-align:center; color: rgba(226,228,240,0.4); margin-bottom: 1.5rem;">
+    Go to Trading212 → History → Download icon → Export CSV<br>
+    You can upload multiple files (e.g. 2024 + 2025) and they'll be merged automatically.
     </div>
     """, unsafe_allow_html=True)
 
     # Preview skeleton cards
+    st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown(cards_row([
         card("Total Profit", "—", "Profitable sell trades", "💚", "accent-green"),
         card("Total Loss", "—", "Losing sell trades", "🔴", "accent-red"),
@@ -499,8 +487,36 @@ if not uploaded_files:
 def load_data(files):
     return analyzer.load_csvs(files)
 
-with st.spinner("⚡ Parsing CSV files…"):
-    df_all = load_data(uploaded_files)
+# Dynamic Loading Feedback
+loading_text = st.empty()
+pbar_container = st.empty()
+for i in range(0, 101, 6):
+    loading_text.markdown(f"<div style='text-align: center; color: #00ff88; font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 0 15px rgba(0,255,136,0.5); margin-bottom: 0.5rem; animation: pulseGlow 1s infinite;'>⚡ SYNTHESIZING DATA... {i}%</div>", unsafe_allow_html=True)
+    with pbar_container:
+        st.progress(i)
+    time.sleep(0.015)
+loading_text.empty()
+pbar_container.empty()
+
+df_all = load_data(uploaded_files)
+
+# Dynamic Date Bounds based on uploaded actual CSV date range
+min_date = df_all["Time"].min().date() if not df_all.empty else date(2020, 1, 1)
+max_date = df_all["Time"].max().date() if not df_all.empty else date.today()
+
+with st.sidebar:
+    st.divider()
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Date Range</div>", unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("From", value=min_date, min_value=min_date, max_value=max_date, label_visibility="visible")
+    with col2:
+        end_date = st.date_input("To", value=max_date, min_value=min_date, max_value=max_date, label_visibility="visible")
+
+    if start_date > end_date:
+        st.error("Start must be before end date.")
+        st.stop()
 
 df = analyzer.filter_by_date(df_all, start_date, end_date)
 
@@ -545,8 +561,24 @@ net_total_yield_usd = usd_components + (eur_components / 0.86) # Fixed $1 = €0
 yield_accent = "accent-green" if net_total_yield_usd >= 0 else "accent-red"
 st.markdown(cards_row([
     card("NET TOTAL YIELD (USD)", f"${net_total_yield_usd:+,.2f}", 
-         "Total Account Profit (Trades + Interest + Dividends + Cashback). Rate: 0.86 EUR = 1 USD", "🌍", yield_accent)
+         "Total Account Profit (Trades + Interest + Dividends + Cashback). Rate: 0.86 EUR = 1 USD", "🌍", f"{yield_accent} accent-glow-pulse")
 ]), unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Total Portfolio Progress (Main Yield Chart)
+# ---------------------------------------------------------------------------
+
+section("📈 Total Portfolio Value Tracker")
+prog_df = analyzer.portfolio_progress_daily(df)
+if not prog_df.empty:
+    with st.expander("⚙️ Chart Settings & Toggles", expanded=False):
+        col1, col2, col3, col4 = st.columns(4)
+        show_dep = col1.checkbox("Show Net Deposits", value=True)
+        show_pnl = col2.checkbox("Show Cumulative P&L", value=True)
+        show_div = col3.checkbox("Show Dividends", value=True)
+        show_int = col4.checkbox("Show Interest", value=True)
+    
+    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Metric cards — Row 1: P&L
@@ -579,8 +611,8 @@ net_dep   = summary["total_deposited_eur"] - summary["total_withdrawn_eur"]
 st.markdown(cards_row([
     card("Dividends (Net)",   fmt_eur(summary["div_net_eur"], 4),
          f"Gross: {fmt_eur(summary['div_gross_eur'], 4)}", "💵", "accent-purple"),
-    card("Withholding Tax",   fmt_eur(summary["div_withholding_eur"], 4),
-         f"{summary['n_dividends']} payments", "🏛️", "accent-red"),
+    card("Total Fees & Taxes",fmt_eur(summary.get("total_fees", 0), 2),
+         "Costs, FX fees, stamp duties", "🏛️", "accent-red"),
     card("Interest EUR",      fmt_eur(summary["interest_eur"], 4),
          f"{summary['n_interest']} payments", "🏦", "accent-teal"),
     card("Interest USD",      f"${summary.get('interest_usd',0):,.4f}",
@@ -590,22 +622,6 @@ st.markdown(cards_row([
     card("Net Deposited",     fmt_eur(net_dep),
          f"In: {fmt_eur(summary['total_deposited_eur'])} / Out: {fmt_eur(summary['total_withdrawn_eur'])}", "🏧", "accent-gray"),
 ]), unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# Total Portfolio Progress
-# ---------------------------------------------------------------------------
-
-section("📈 Total Portfolio Value Tracker")
-prog_df = analyzer.portfolio_progress_daily(df)
-if not prog_df.empty:
-    with st.expander("⚙️ Chart Settings & Toggles", expanded=False):
-        col1, col2, col3, col4 = st.columns(4)
-        show_dep = col1.checkbox("Show Net Deposits", value=True)
-        show_pnl = col2.checkbox("Show Cumulative P&L", value=True)
-        show_div = col3.checkbox("Show Dividends", value=True)
-        show_int = col4.checkbox("Show Interest", value=True)
-    
-    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Tabs
