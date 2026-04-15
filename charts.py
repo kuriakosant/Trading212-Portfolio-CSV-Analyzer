@@ -36,7 +36,7 @@ BASE_LAYOUT = dict(
     font        = dict(family=FONT, color=C_TEXT, size=13),
     paper_bgcolor = C_BG,
     plot_bgcolor  = C_PANEL,
-    margin      = dict(l=16, r=65, t=55, b=24),  # Increased right margin to prevent Plotly text/bubble clipping
+    margin      = dict(l=16, r=120, t=55, b=24),  # Increased right margin to prevent Plotly text/bubble clipping
     hoverlabel  = dict(
         bgcolor="#1c1d2e",
         bordercolor=C_PURPLE,
@@ -600,7 +600,15 @@ def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
     ))
 
     _add_zero_line(fig, axis="x")
-    fig.update_xaxes(title_text="Net P&L ($)")
+    
+    max_val = df["Net P&L ($)"].max()
+    min_val = df["Net P&L ($)"].min()
+    x_max = float(max_val) * 1.2 if max_val > 0 else 0.0
+    x_min = float(min_val) * 1.2 if min_val < 0 else 0.0
+    if x_max == 0 and x_min == 0:
+        x_max, x_min = 1.0, -1.0
+        
+    fig.update_xaxes(title_text="Net P&L ($)", range=[x_min, x_max])
     return fig
 
 
@@ -956,8 +964,11 @@ def chart_top_merchants(df_merch: pd.DataFrame) -> go.Figure:
         hovertemplate="<b>%{y}</b><br>Amount: <b>€%{x:,.2f}</b><extra></extra>"
     ))
 
+    max_val = float(top_df["Amount"].max()) if not top_df.empty else 0.0
+    x_max = max_val * 1.25 if max_val > 0 else 1.0
+
     fig.update_layout(
-        xaxis=dict(title="Amount (€)", gridcolor="rgba(255,255,255,0.05)"),
+        xaxis=dict(title="Amount (€)", gridcolor="rgba(255,255,255,0.05)", range=[0, x_max]),
         yaxis=dict(autorange=True)
     )
     return fig
