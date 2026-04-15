@@ -145,7 +145,7 @@ def compute_summary(df: pd.DataFrame) -> dict:
     total_sell_volume = float(sells["Total"].fillna(0).abs().sum())
 
     div_total_eur   = float(dividends["Total"].fillna(0).sum())
-    div_withholding = float(dividends["Withholding tax"].fillna(0).abs().sum())
+    div_withholding = float(dividends.get("Withholding tax", pd.Series(dtype=float)).fillna(0).abs().sum())
     div_gross       = div_total_eur + div_withholding
 
     int_eur, int_usd = 0.0, 0.0
@@ -339,7 +339,7 @@ def dividend_series(df: pd.DataFrame) -> pd.DataFrame:
 
     divs = divs.sort_values("Time")
     divs["Net (EUR)"]         = divs["Total"].fillna(0)
-    divs["Withholding (EUR)"] = divs["Withholding tax"].fillna(0).abs()
+    divs["Withholding (EUR)"] = divs.get("Withholding tax", pd.Series(0, index=divs.index)).fillna(0).abs()
     divs["Cumulative (EUR)"]  = divs["Net (EUR)"].cumsum()
     return divs[["Time", "Ticker", "Name", "Net (EUR)", "Withholding (EUR)", "Cumulative (EUR)"]].reset_index(drop=True)
 

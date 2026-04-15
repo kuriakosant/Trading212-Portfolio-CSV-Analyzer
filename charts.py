@@ -418,8 +418,7 @@ def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15) -> go.Figure:
 # ---------------------------------------------------------------------------
 
 def chart_income_pie(summary: dict) -> go.Figure:
-    labels, values, pull = [], [], []
-    COLOR_MAP = {
+    COLORS = {
         "Trade Profit ($)": C_GREEN,
         "Dividends (€)":    C_PURPLE,
         "Interest (€)":     C_TEAL,
@@ -427,39 +426,92 @@ def chart_income_pie(summary: dict) -> go.Figure:
         "Cashback (€)":     C_BLUE,
     }
 
+    items = []
     if summary.get("gross_profit", 0) > 0:
-        labels.append("Trade Profit ($)"); values.append(summary["gross_profit"]); pull.append(0.06)
+        items.append(("Trade Profit ($)", summary["gross_profit"], 0.05))
     if summary.get("div_net_eur", 0) > 0:
-        labels.append("Dividends (€)"); values.append(summary["div_net_eur"]); pull.append(0.02)
+        items.append(("Dividends (€)", summary["div_net_eur"], 0.0))
     if summary.get("interest_eur", 0) > 0:
-        labels.append("Interest (€)"); values.append(summary["interest_eur"]); pull.append(0.02)
+        items.append(("Interest (€)", summary["interest_eur"], 0.0))
     if summary.get("interest_usd", 0) > 0:
-        labels.append("Interest ($)"); values.append(summary["interest_usd"]); pull.append(0.02)
+        items.append(("Interest ($)", summary["interest_usd"], 0.0))
     if summary.get("cashback_eur", 0) > 0:
-        labels.append("Cashback (€)"); values.append(summary["cashback_eur"]); pull.append(0.02)
+        items.append(("Cashback (€)", summary["cashback_eur"], 0.0))
 
-    if not labels:
+    if not items:
         return _empty("No income data in selected period")
 
-    colors = [COLOR_MAP.get(l, C_BLUE) for l in labels]
+    labels = [i[0] for i in items]
+    values = [i[1] for i in items]
+    pull   = [i[2] for i in items]
+    colors = [COLORS.get(l, C_BLUE) for l in labels]
+    total  = sum(values)
 
-    fig = _fig("🍩 Income Sources", height=380)
+    fig = make_subplots(
+        rows=1, cols=2,
+        column_widths=[0.48, 0.52],
+        specs=[[{"type": "domain"}, {"type": "xy"}]],
+        horizontal_spacing=0.04,
+    )
+
+    # Left: donut — no text labels on slices, just hover
     fig.add_trace(go.Pie(
-        labels=labels, values=values, pull=pull, hole=0.52,
+        labels=labels, values=values, pull=pull, hole=0.56,
         marker=dict(colors=colors, line=dict(color=C_BG, width=3)),
-        textinfo="label+percent",
-        textfont=dict(size=12, color=C_TEXT),
+        textinfo="none",
         hovertemplate="<b>%{label}</b><br>Amount: %{value:,.4f}<br>Share: %{percent}<extra></extra>",
-    ))
+        showlegend=False,
+    ), row=1, col=1)
+
+    # Right: horizontal bar — one bar per source, sorted smallest → largest so the dominant one is last
+    sorted_items = sorted(zip(labels, values, colors), key=lambda x: x[1])
+    bar_labels = [x[0] for x in sorted_items]
+    bar_values = [x[1] for x in sorted_items]
+    bar_colors = [x[2] for x in sorted_items]
+    bar_pcts   = [v / total * 100 for v in bar_values]
+
+    fig.add_trace(go.Bar(
+        y=bar_labels,
+        x=bar_values,
+        orientation="h",
+        marker=dict(
+            color=bar_colors,
+            line=dict(color="rgba(0,0,0,0)", width=0),
+        ),
+        text=[f"  ${v:,.2f}  ({p:.1f}%)" for v, p in zip(bar_values, bar_pcts)],
+        textposition="outside",
+        textfont=dict(size=11, color=C_TEXT),
+        hovertemplate="<b>%{y}</b><br>Amount: $%{x:,.4f}<extra></extra>",
+        showlegend=False,
+        cliponaxis=False,
+    ), row=1, col=2)
+
+    # Style the bar axes
+    fig.update_xaxes(
+        row=1, col=2,
+        showgrid=False, zeroline=False, showticklabels=False,
+        range=[0, max(bar_values) * 1.45],  # padding so labels fit
+    )
+    fig.update_yaxes(
+        row=1, col=2,
+        tickfont=dict(size=11.5, color=C_TEXT),
+        showgrid=False, zeroline=False,
+    )
+
+    profit_val = summary.get("gross_profit", 0)
     fig.update_layout(
+        title=dict(text="💰 Income Sources", font=dict(size=15, color=C_TEXT), x=0),
+        height=340,
+        paper_bgcolor=C_BG,
+        plot_bgcolor=C_BG,
+        font=dict(family="Inter, sans-serif", color=C_TEXT),
+        margin=dict(l=10, r=30, t=50, b=10),
         annotations=[dict(
-            text=f"<b>${summary.get('gross_profit',0):,.0f}</b><br>profit",
-            x=0.5, y=0.5, xref="paper", yref="paper",
+            text=f"<b>${profit_val:,.0f}</b><br><span style='font-size:11px'>trade profit</span>",
+            x=0.22, y=0.5, xref="paper", yref="paper",
             showarrow=False, font=dict(size=14, color=C_TEXT),
+            align="center",
         )],
-        showlegend=True,
-        legend=dict(orientation="v", x=1.02, y=0.5,
-                    font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
     )
     return fig
 
