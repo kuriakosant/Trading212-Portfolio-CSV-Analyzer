@@ -1,12 +1,25 @@
 """
-analyzer.py — Core data processing for Trading212 CSV exports.
-Handles parsing, action classification, date filtering, P&L aggregation,
-and timeline resampling for charting.
+analyzer.py — Core data processing for broker CSV exports.
+
+Responsible for:
+  * Broker-agnostic loading (dispatches to the right adapter in `brokers/`)
+  * Action classification into coarse `_category` buckets
+  * Date filtering
+  * P&L aggregation, win-rate classification, timeline resampling
+  * Per-ticker and per-company breakdowns
+
+Downstream (charts, app) consumes the canonical schema declared in
+`brokers.canonical`; this module is the single place that translates
+canonical Action strings into category buckets.
 """
 
 import pandas as pd
 import numpy as np
 from datetime import date
+
+import brokers
+from brokers import canonical as _canon
+from brokers.fifo import fill_revolut_result
 
 # ---------------------------------------------------------------------------
 # Action type classification
@@ -15,14 +28,15 @@ from datetime import date
 BUY_ACTIONS      = {"market buy", "limit buy"}
 SELL_ACTIONS     = {"market sell", "limit sell"}
 DIVIDEND_ACTIONS = {"dividend (dividend)", "dividend"}
+DIVIDEND_TAX_CORRECTION_ACTIONS = {"dividend tax correction", "dividend tax (correction)"}
 INTEREST_ACTIONS = {"interest on cash", "lending interest"}
 DEPOSIT_ACTIONS  = {"deposit"}
 WITHDRAWAL_ACTIONS = {"withdrawal"}
 FX_ACTIONS       = {"currency conversion"}
+STOCK_SPLIT_ACTIONS = {"stock split"}
 CARD_DEBIT_ACTIONS  = {"card debit"}
 CARD_CREDIT_ACTIONS = {"card credit"}
 CASHBACK_ACTIONS    = {"spending cashback"}
-CASHBACK_ACTIONS = {"spending cashback"}
 
 FREQ_MAP = {
     "Daily":     "D",
@@ -34,16 +48,18 @@ FREQ_MAP = {
 
 def classify_action(action: str) -> str:
     a = str(action).strip().lower()
-    if a in BUY_ACTIONS:       return "buy"
-    if a in SELL_ACTIONS:      return "sell"
-    if a in DIVIDEND_ACTIONS:  return "dividend"
-    if a in INTEREST_ACTIONS:  return "interest"
-    if a in DEPOSIT_ACTIONS:   return "deposit"
-    if a in WITHDRAWAL_ACTIONS: return "withdrawal"
-    if a in FX_ACTIONS:        return "fx_conversion"
-    if a in CARD_DEBIT_ACTIONS:  return "card_debit"
-    if a in CARD_CREDIT_ACTIONS: return "card_credit"
-    if a in CASHBACK_ACTIONS:  return "cashback"
+    if a in BUY_ACTIONS:                     return "buy"
+    if a in SELL_ACTIONS:                    return "sell"
+    if a in DIVIDEND_ACTIONS:                return "dividend"
+    if a in DIVIDEND_TAX_CORRECTION_ACTIONS: return "dividend_tax_correction"
+    if a in INTEREST_ACTIONS:                return "interest"
+    if a in DEPOSIT_ACTIONS:                 return "deposit"
+    if a in WITHDRAWAL_ACTIONS:              return "withdrawal"
+    if a in FX_ACTIONS:                      return "fx_conversion"
+    if a in STOCK_SPLIT_ACTIONS:             return "stock_split"
+    if a in CARD_DEBIT_ACTIONS:              return "card_debit"
+    if a in CARD_CREDIT_ACTIONS:             return "card_credit"
+    if a in CASHBACK_ACTIONS:                return "cashback"
     return "other"
 
 
@@ -52,76 +68,78 @@ def classify_action(action: str) -> str:
 # ---------------------------------------------------------------------------
 
 def load_csv(uploaded_file) -> pd.DataFrame:
-    df = pd.read_csv(uploaded_file, low_memory=False)
-    return _clean_dataframe(df)
+    """Detect the broker, parse, normalize to canonical schema, attach _category."""
+    df = brokers.load(uploaded_file)
+    df[_canon.COL_CATEGORY] = df[_canon.COL_ACTION].apply(classify_action)
+    return df
 
 
 def load_csvs(uploaded_files) -> pd.DataFrame:
     """
     Load and merge multiple CSV exports, de-duplicating robustly.
 
-    Trading212 exports can overlap (e.g. Dec 31 appears in both a 2025 file
-    and a 2026 file).  De-duplication is done in two passes:
+    Broker exports can overlap in time (e.g. Dec 31 appears in both a 2025
+    file and a 2026 file).  De-duplication runs in two passes and is
+    **scoped per broker** so a T212 row and a Revolut row that happen to
+    share identical values can never collide.
 
-    Pass 1 — ID-based (covers trades, deposits, interest, cashback, FX, etc.)
-        Every row that has a non-empty ID value is deduplicated by that ID.
-        IDs are globally unique transaction identifiers assigned by Trading212.
+    Pass 1 — ID-based (covers trades, deposits, interest, cashback, FX, etc.
+        for brokers that emit an ID column — currently only Trading212).
 
-    Pass 2 — Content fingerprint (covers dividends and any other rows with
-        a blank/null ID column).
-        Fingerprint = (Time, Action, ISIN, No. of shares, Total)
+    Pass 2 — Content fingerprint for rows without an ID.
+        Fingerprint = (Time, Action, ISIN or Ticker, No. of shares, Total, _broker)
         Two rows with identical fingerprints on the same instant cannot be
         different transactions, so the duplicate is dropped.
+
+    After deduplication we run the FIFO pass so Revolut sells get a
+    realized-P&L `Result` value (T212 rows already have it from the broker).
     """
     frames = [load_csv(f) for f in uploaded_files]
     combined = pd.concat(frames, ignore_index=True)
 
-    if "ID" not in combined.columns:
-        combined["ID"] = pd.NA
+    # Guarantee ID and _broker exist even if all files were Revolut
+    if _canon.COL_ID not in combined.columns:
+        combined[_canon.COL_ID] = pd.NA
+    if _canon.COL_BROKER not in combined.columns:
+        combined[_canon.COL_BROKER] = "unknown"
 
-    # Split into rows that have an ID and rows that don't
-    has_id  = combined["ID"].notna() & (combined["ID"].astype(str).str.strip() != "")
+    # Pass 1: deduplicate by (ID, _broker) for rows that have an ID.
+    has_id = (combined[_canon.COL_ID].notna()
+              & (combined[_canon.COL_ID].astype(str).str.strip() != ""))
     with_id    = combined[has_id].copy()
     without_id = combined[~has_id].copy()
+    if not with_id.empty:
+        with_id = with_id.drop_duplicates(subset=[_canon.COL_ID, _canon.COL_BROKER])
 
-    # Pass 1: deduplicate by ID
-    with_id = with_id.drop_duplicates(subset=["ID"])
-
-    # Pass 2: deduplicate by content fingerprint
-    fp_cols = ["Time", "Action", "ISIN", "No. of shares", "Total"]
-    fp_available = [c for c in fp_cols if c in without_id.columns]
-    if fp_available:
-        without_id = without_id.drop_duplicates(subset=fp_available)
+    # Pass 2: content fingerprint for rows without an ID.
+    # Revolut lacks ISIN, so we fall back to Ticker to keep the fingerprint
+    # discriminating enough.
+    if not without_id.empty:
+        isin_or_ticker = (
+            without_id[_canon.COL_ISIN]
+            .where(without_id[_canon.COL_ISIN].notna(), without_id[_canon.COL_TICKER])
+        )
+        without_id = without_id.assign(_fp_isin_or_ticker=isin_or_ticker)
+        fp_cols = [
+            _canon.COL_TIME,
+            _canon.COL_ACTION,
+            "_fp_isin_or_ticker",
+            _canon.COL_SHARES,
+            _canon.COL_TOTAL,
+            _canon.COL_BROKER,
+        ]
+        fp_available = [c for c in fp_cols if c in without_id.columns]
+        if fp_available:
+            without_id = without_id.drop_duplicates(subset=fp_available)
+        without_id = without_id.drop(columns=["_fp_isin_or_ticker"], errors="ignore")
 
     combined = pd.concat([with_id, without_id], ignore_index=True)
-    return combined.sort_values("Time").reset_index(drop=True)
+    combined = combined.sort_values(_canon.COL_TIME).reset_index(drop=True)
 
+    # Fill realized P&L on Revolut sells via FIFO (no-op on T212 rows).
+    combined = fill_revolut_result(combined)
 
-def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    df.columns = [c.strip() for c in df.columns]
-
-    # Backward compatibility: older T212 exports (e.g. 2024) natively omit P&L columns.
-    # Instantiate them safely as 0.0 before any downstream series aggregations fire.
-    missing_criticals = [
-        "Result", "Result (EUR)", "Result (USD)",
-        "Withholding tax", "Withholding tax (EUR)", "Withholding tax (USD)"
-    ]
-    for col in missing_criticals:
-        if col not in df.columns:
-            df[col] = 0.0
-
-    df["Time"] = pd.to_datetime(df["Time"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-    numeric_cols = [
-        "No. of shares", "Price / share", "Exchange rate", "Result", "Total",
-        "Withholding tax", "Finra fee", "Currency conversion from amount",
-        "Currency conversion to amount", "Currency conversion fee",
-        "French transaction tax", "Stamp duty reserve tax", "UK PTM Levy"
-    ]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["_category"] = df["Action"].apply(classify_action)
-    return df
+    return combined
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +192,8 @@ def compute_summary(df: pd.DataFrame) -> dict:
     sells      = df[df["_category"] == "sell"].copy()
     buys       = df[df["_category"] == "buy"].copy()
     dividends  = df[df["_category"] == "dividend"].copy()
+    div_tax_corrections = df[df["_category"] == "dividend_tax_correction"].copy()
+    stock_splits = df[df["_category"] == "stock_split"].copy()
     interests  = df[df["_category"] == "interest"].copy()
     deposits   = df[df["_category"] == "deposit"].copy()
     withdrawals= df[df["_category"] == "withdrawal"].copy()
@@ -204,6 +224,10 @@ def compute_summary(df: pd.DataFrame) -> dict:
     total_deposited = float(deposits["Total"].fillna(0).abs().sum())
     total_withdrawn = float(withdrawals["Total"].fillna(0).abs().sum())
     total_card_spent= float(card_debits["Total"].fillna(0).abs().sum())
+
+    # Revolut-specific: dividend-tax corrections net out in most cases but
+    # surface the total so the Dividends tab can show it separately.
+    div_tax_correction_total = float(div_tax_corrections["Total"].fillna(0).sum())
 
     # Calculate aggregate fees
     fee_cols = [
@@ -250,6 +274,10 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_withdrawals": len(withdrawals),
         "fees_breakdown": fees_breakdown,
         "total_fees": total_fees,
+        "div_tax_correction_total": div_tax_correction_total,
+        "n_div_tax_corrections": len(div_tax_corrections),
+        "n_stock_splits": len(stock_splits),
+        "brokers": sorted(df.get("_broker", pd.Series(dtype=str)).dropna().unique().tolist()),
     }
 
 import io
@@ -381,8 +409,9 @@ def pnl_timeline(df: pd.DataFrame, freq: str = "D") -> pd.DataFrame:
         trades=("Result", "count"),
     ).reset_index()
     agg = agg.rename(columns={
-        "period_pnl": "Period P&L", "wins": "Wins", "losses": "Losses", 
-        "trades": "Trades", "valid_trades": "Valid Trades"
+        "Time":       "Period",
+        "period_pnl": "Period P&L", "wins": "Wins", "losses": "Losses",
+        "trades":     "Trades",     "valid_trades": "Valid Trades",
     })
     
     agg["Cumulative P&L"] = agg["Period P&L"].cumsum()
@@ -554,9 +583,9 @@ def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
             "Losing Sells":    losses_count,
             "Break-Even":      breakeven_count,
             "Best Trade ($)":  round(float(wins_series.max()), 2) if not wins_series.empty else 0.0,
-            "Worst Trade ($)": round(float(losses.min()), 2) if not losses.empty else 0.0,
-            "Avg Win ($)":     round(float(wins.mean()), 2) if not wins.empty else 0.0,
-            "Avg Loss ($)":    round(float(losses.mean()), 2) if not losses.empty else 0.0,
+            "Worst Trade ($)": round(float(losses_series.min()), 2) if not losses_series.empty else 0.0,
+            "Avg Win ($)":     round(float(wins_series.mean()), 2) if not wins_series.empty else 0.0,
+            "Avg Loss ($)":    round(float(losses_series.mean()), 2) if not losses_series.empty else 0.0,
             "First Trade":     first,
             "Last Trade":      last,
             "Days Active":     days,
