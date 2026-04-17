@@ -17,7 +17,7 @@ import io
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="T212 Portfolio Analyzer",
+    page_title="Broker Portfolio CSV Analyzer",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -428,9 +428,9 @@ with st.sidebar:
         <div style="font-size:1.4rem;font-weight:800;
             background:linear-gradient(135deg,#a78bfa,#38bdf8);
             -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-            background-clip:text;margin-bottom:2px;">T212 Analyzer</div>
+            background-clip:text;margin-bottom:2px;">Broker CSV Analyzer</div>
         <div style="font-size:0.75rem;color:rgba(226,228,240,0.35);font-weight:400;">
-            Portfolio CSV Analysis Tool</div>
+            Trading212 · Revolut</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -484,8 +484,8 @@ if page_selection == "🏦 Portfolio Dashboard":
     st.markdown("""
     <div class="hero">
         <div class="hero-badge">📈 Portfolio Analytics</div>
-        <h1 class="hero-title">Trading212 Portfolio Analyzer</h1>
-        <p class="hero-sub">Upload your CSV exports · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
+        <h1 class="hero-title">Broker Portfolio CSV Analyzer</h1>
+        <p class="hero-sub">Trading212 &amp; Revolut · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -506,9 +506,10 @@ if not getattr(st.session_state, "file_data", []):
     st.markdown("""
     <br>
     <div style="font-size:2.5rem;margin-bottom:0.1rem;text-align:center;">📂</div>
-    <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your Trading212 CSV exports</div>
+    <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your broker CSV exports</div>
     <div style="font-size:0.85rem; text-align:center; color: rgba(226,228,240,0.4); margin-bottom: 1.5rem;">
-    Go to Trading212 → History → Download icon → Export CSV<br>
+    Trading212 → History → Download icon → Export CSV<br>
+    Revolut → Stocks → Statements → Account statement (CSV)<br>
     Please use the file uploader mapped in your left Sidebar to begin!
     </div>
     """, unsafe_allow_html=True)

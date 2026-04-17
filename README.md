@@ -1,16 +1,18 @@
-# Trading212 Portfolio & Card Analytics Terminal
+# Broker Portfolio CSV Analyzer
 
-> *"Local, secure portfolio and spending analyzer for Trading212. Built with Streamlit, it transforms raw CSV history exports into powerful visual insights, detailing trade win rates, Interest , Dividends , P&L efficiency, and granular merchant spending that the native app doesn't show you.."*
+> *"Local, secure portfolio and spending analyzer for Trading212 and Revolut. Built with Streamlit, it transforms raw CSV history exports into powerful visual insights, detailing trade win rates, Interest, Dividends, P&L efficiency, and granular merchant spending that the native apps don't show you.."*
 
 ![Main Dashboard](assets/photo.png)
 
-A high-performance **Streamlit** web application for visualizing your Trading212 portfolio and debit card activity.  
-Upload one or more CSV files, pick a date range, and instantly unlock institutional-grade P&L breakdowns, yield tracking, and a deep per-company comparison — all wrapped in a premium dark UI.
+A high-performance **Streamlit** web application for visualizing your **Trading212** and **Revolut** portfolios (plus Trading212 debit card activity).
+Upload one or more CSV files — mix brokers freely — pick a date range, and instantly unlock institutional-grade P&L breakdowns, yield tracking, and a deep per-company comparison — all wrapped in a premium dark UI.
+
+> **Supported brokers:** Trading212 (full feature set) · Revolut Stocks (USD sub-portfolio — see note below)
 
 ---
 
-## 🚀 The "Missing" Trading212 Insights
-While the native Trading212 app is excellent for execution, its analytics are basic. This dashboard extracts and visualizes the raw data hidden within your export files to give you:
+## 🚀 The "Missing" Broker Insights
+While the native Trading212 and Revolut apps are excellent for execution, their analytics are basic. This dashboard extracts and visualizes the raw data hidden within your export files to give you:
 - **True Win Rates**: Know exactly how many sell trades resulted in a profit vs. a loss, and visualize your win-ratio per ticker.
 - **Hidden Fees & Taxes**: See the exact aggregated total of FX fees, stamp duties, and hidden costs you've paid across your trading career.
 - **Algorithmic P&L Correlation**: Scatter plot visualization showing Trade Volume vs. Total Trades vs. Net P&L to see if overtrading is hurting your returns.
@@ -45,9 +47,9 @@ While the native Trading212 app is excellent for execution, its analytics are ba
 ![Interest Tracker](assets/INTEREST.png)  
 - **Passive Income Focus**: Watch your compound passive income grow with step-charts, cleanly splitting EUR and USD interest payments while tracking withholding taxes.
 
-### 💳 6. Trading212 Card Spending Analyzer
-![Card Spending Analytics](assets/spending.png)  
-The dashboard dynamically splits into a secondary "Card Spending" suite if it detects debit card activity within your CSVs.
+### 💳 6. Trading212 Card Spending Analyzer *(Trading212 only)*
+![Card Spending Analytics](assets/spending.png)
+The dashboard dynamically splits into a secondary "Card Spending" suite if it detects debit card activity within your CSVs. Revolut's Stocks CSV does not carry card/merchant data, so this page automatically hides itself when only Revolut files are uploaded.
 - **Monthly Velocity**: Bar charts tracking your day-to-day debit card burn rate.
 - **Merchant Profiling**: A horizontal leaderboard identifying your Top 10 most frequented merchants.
 - **Category Donut**: A breakdown of your spending by internal Visa/Mastercard categories (e.g., Retail, Groceries, Restaurants). 
@@ -59,7 +61,7 @@ The dashboard dynamically splits into a secondary "Card Spending" suite if it de
 
 ### Prerequisites
 - Python 3.9+
-- A Trading212 Invest or ISA account (CSV export)
+- A Trading212 Invest/ISA account **or** a Revolut Stocks account (CSV export)
 
 ### Terminal Startup
 
@@ -83,7 +85,9 @@ Then open **http://localhost:8501** in your browser.
 
 ---
 
-## 🗄 Exporting your CSV from Trading212
+## 🗄 Exporting your CSV
+
+### From Trading212
 
 1. Open the **Trading212** app (mobile or web)
 2. Go to **Menu → History**
@@ -91,7 +95,16 @@ Then open **http://localhost:8501** in your browser.
 4. Select your date range *(max 365 days per export)*
 5. Tap **Export** — the CSV downloads to your device
 
-> **Tip:** For multi-year history, export one year at a time. The sidebar uploader accepts multiple CSV files concurrently and will merge/de-duplicate them completely automatically!
+### From Revolut
+
+1. Open the **Revolut** app and switch to the **Stocks** product
+2. Go to **Statements** (under the Stocks account menu)
+3. Choose **Account statement** and the **CSV** format
+4. Pick your date range and confirm — the CSV is emailed / downloaded
+
+> **Heads up on Revolut:** The adapter analyzes Revolut as a **USD-only sub-portfolio**. EUR cash top-ups, EUR-denominated trades, and internal EUR↔USD conversions are filtered out at parse time so that P&L, FIFO cost basis, and cash flow are all expressed cleanly in USD end-to-end. Revolut's Stocks CSV also doesn't include card/merchant data, so the **Card Spending** page stays Trading212-only.
+
+> **Tip:** For multi-year history, export one year at a time. The sidebar uploader accepts multiple CSV files concurrently — **mix Trading212 and Revolut files freely** — and will merge / de-duplicate them automatically.
 
 ---
 
