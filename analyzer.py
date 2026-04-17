@@ -134,6 +134,38 @@ def filter_by_date(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
     return df[(df["Time"] >= start_ts) & (df["Time"] <= end_ts)].copy()
 
 
+def classify_trades_for_winrate(sells_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Appends boolean integer columns 'is_win', 'is_loss', and 'is_valid_trade'
+    to the sells dataframe. Tiny fractional losses (>-0.50 cash OR >-0.025% ROI)
+    are strictly excluded from being categorized as a loss or a valid trade,
+    protecting the win rate engine from auto-invest pie rebalancing spam.
+    """
+    df = sells_df.copy()
+    if df.empty:
+        df["is_win"] = 0
+        df["is_loss"] = 0
+        df["is_valid_trade"] = 0
+        return df
+
+    res = df.get("Result_clean", df.get("Result", pd.Series(0, index=df.index))).fillna(0)
+    tot = df["Total"].fillna(0).abs()
+    
+    init_val = tot - res
+    pct = np.where(init_val > 0, res / init_val, 0)
+    
+    is_win = (res > 0)
+    is_raw_loss = (res < 0)
+    
+    # A loss is 'tiny' if it lost less than $0.50 OR lost less than 0.025%
+    is_tiny_loss = is_raw_loss & ((res >= -0.50) | (pct >= -0.00025))
+    is_genuine_loss = is_raw_loss & (~is_tiny_loss)
+    
+    df["is_win"] = is_win.astype(int)
+    df["is_loss"] = is_genuine_loss.astype(int)
+    df["is_valid_trade"] = (is_win | is_genuine_loss).astype(int)
+    return df
+
 # ---------------------------------------------------------------------------
 # Summary aggregation
 # ---------------------------------------------------------------------------
@@ -186,9 +218,11 @@ def compute_summary(df: pd.DataFrame) -> dict:
             fees_breakdown[col] = val
             total_fees += val
 
+    sells_validated   = classify_trades_for_winrate(sells)
     n_sells           = len(sells)
-    n_wins            = int((sells_result > 0).sum())
-    n_losses          = int((sells_result < 0).sum())
+    n_wins            = int(sells_validated["is_win"].sum()) if not sells_validated.empty else 0
+    n_losses          = int(sells_validated["is_loss"].sum()) if not sells_validated.empty else 0
+    n_valid_sells     = int(sells_validated["is_valid_trade"].sum()) if not sells_validated.empty else 0
 
     return {
         "gross_profit": gross_profit,
@@ -198,7 +232,7 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_sells": n_sells,
         "n_winning_trades": n_wins,
         "n_losing_trades": n_losses,
-        "win_rate": (n_wins / n_sells * 100) if n_sells > 0 else 0.0,
+        "win_rate": (n_wins / n_valid_sells * 100) if n_valid_sells > 0 else 0.0,
         "total_buy_volume": total_buy_volume,
         "total_sell_volume": total_sell_volume,
         "div_gross_eur": div_gross,
@@ -337,21 +371,26 @@ def pnl_timeline(df: pd.DataFrame, freq: str = "D") -> pd.DataFrame:
 
     sells = sells.set_index("Time")
     sells["Result"] = sells["Result"].fillna(0)
-    sells["win"]    = (sells["Result"] > 0).astype(int)
-    sells["loss"]   = (sells["Result"] < 0).astype(int)
+    sells = classify_trades_for_winrate(sells)
 
     agg = sells.resample(freq).agg(
         period_pnl=("Result", "sum"),
-        wins=("win", "sum"),
-        losses=("loss", "sum"),
+        wins=("is_win", "sum"),
+        losses=("is_loss", "sum"),
+        valid_trades=("is_valid_trade", "sum"),
         trades=("Result", "count"),
     ).reset_index()
-    agg.columns = ["Period", "Period P&L", "Wins", "Losses", "Trades"]
+    agg = agg.rename(columns={
+        "period_pnl": "Period P&L", "wins": "Wins", "losses": "Losses", 
+        "trades": "Trades", "valid_trades": "Valid Trades"
+    })
+    
     agg["Cumulative P&L"] = agg["Period P&L"].cumsum()
     # Running win rate
     agg["Cumul Wins"]   = agg["Wins"].cumsum()
+    agg["Cumul Valid"]  = agg["Valid Trades"].cumsum()
     agg["Cumul Trades"] = agg["Trades"].cumsum()
-    agg["Win Rate %"]   = (agg["Cumul Wins"] / agg["Cumul Trades"].replace(0, np.nan) * 100).round(1)
+    agg["Win Rate %"]   = (agg["Cumul Wins"] / agg["Cumul Valid"].replace(0, np.nan) * 100).round(1)
 
     return agg
 
@@ -475,12 +514,23 @@ def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
         sells = grp[grp["_category"] == "sell"]
 
         result_s = sells["Result_clean"]
-        wins      = result_s[result_s > 0]
-        losses    = result_s[result_s < 0]
-        breakeven = result_s[result_s == 0]
+        wins_series = result_s[result_s > 0]
+        losses_series = result_s[result_s < 0]
 
-        gross_profit = float(wins.sum())
-        gross_loss   = float(losses.sum())
+        if len(sells) > 0:
+            df_win = classify_trades_for_winrate(sells)
+            wins_count = int(df_win["is_win"].sum())
+            losses_count = int(df_win["is_loss"].sum())
+            valid_count = int(df_win["is_valid_trade"].sum())
+            winrate = round(wins_count / valid_count * 100, 1) if valid_count > 0 else 0.0
+        else:
+            wins_count = losses_count = breakeven_count = 0
+            winrate = 0.0
+
+        breakeven_count = len(sells) - wins_count - losses_count
+
+        gross_profit = float(wins_series.sum()) if not wins_series.empty else 0.0
+        gross_loss   = float(losses_series.sum()) if not losses_series.empty else 0.0
 
         first = grp["Time"].min()
         last  = grp["Time"].max()
@@ -499,11 +549,11 @@ def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
             "Gross Profit ($)":round(gross_profit, 2),
             "Gross Loss ($)":  round(gross_loss, 2),
             "Net P&L ($)":     round(gross_profit + gross_loss, 2),
-            "Win Rate (%)":    round(len(wins) / len(sells) * 100, 1) if len(sells) > 0 else 0.0,
-            "Winning Sells":   len(wins),
-            "Losing Sells":    len(losses),
-            "Break-Even":      len(breakeven),
-            "Best Trade ($)":  round(float(wins.max()), 2) if not wins.empty else 0.0,
+            "Win Rate (%)":    winrate,
+            "Winning Sells":   wins_count,
+            "Losing Sells":    losses_count,
+            "Break-Even":      breakeven_count,
+            "Best Trade ($)":  round(float(wins_series.max()), 2) if not wins_series.empty else 0.0,
             "Worst Trade ($)": round(float(losses.min()), 2) if not losses.empty else 0.0,
             "Avg Win ($)":     round(float(wins.mean()), 2) if not wins.empty else 0.0,
             "Avg Loss ($)":    round(float(losses.mean()), 2) if not losses.empty else 0.0,

@@ -368,11 +368,12 @@ section[data-testid="stSidebar"] .stDateInput > div {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def card(label: str, value: str, sub: str = "", icon: str = "", accent: str = "accent-gray") -> str:
+def card(label: str, value: str, sub: str = "", icon: str = "", accent: str = "accent-gray", tooltip: str = "") -> str:
+    tooltip_html = f" <span style='cursor:help; opacity:0.8;' title='{tooltip}'>ⓘ</span>" if tooltip else ""
     return f"""
     <div class="card {accent}">
         {"<span class='card-icon'>" + icon + "</span>" if icon else ""}
-        <div class="card-label">{label}</div>
+        <div class="card-label">{label}{tooltip_html}</div>
         <div class="card-value">{value}</div>
         {"<div class='card-sub'>" + sub + "</div>" if sub else ""}
     </div>"""
@@ -812,7 +813,8 @@ with tabs[3]:
             card("Most Traded",        most_traded["Ticker"],
                  f"{most_traded['Total Trades']} total trades", "🔥", "accent-amber"),
             card("Highest Win Rate",   best_wr["Ticker"],
-                 f"{best_wr['Win Rate (%)']:.1f}% win rate", "🎯", "accent-teal"),
+                 f"{best_wr['Win Rate (%)']:.1f}% win rate", "🎯", "accent-teal",
+                 tooltip="Micro fractional losses (<$0.50 or <0.025%) caused by Trading212 Pie rebalancing are strictly excluded from the win-rate denominator, inherently improving the geometric ratio."),
         ]), unsafe_allow_html=True)
 
         # ── Overview charts row ────────────────────────────────
