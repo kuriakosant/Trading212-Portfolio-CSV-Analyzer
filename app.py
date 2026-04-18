@@ -17,7 +17,7 @@ import io
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="T212 Portfolio Analyzer",
+    page_title="Broker Portfolio CSV Analyzer",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -428,9 +428,9 @@ with st.sidebar:
         <div style="font-size:1.4rem;font-weight:800;
             background:linear-gradient(135deg,#a78bfa,#38bdf8);
             -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-            background-clip:text;margin-bottom:2px;">T212 Analyzer</div>
+            background-clip:text;margin-bottom:2px;">Broker CSV Analyzer</div>
         <div style="font-size:0.75rem;color:rgba(226,228,240,0.35);font-weight:400;">
-            Portfolio CSV Analysis Tool</div>
+            Trading212 · Revolut</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -449,7 +449,12 @@ with st.sidebar:
         key="sidebar_uploader",
         accept_multiple_files=True,
         on_change=sync_uploads,
-        help="Export from Trading212 → History → Download icon. Supports multiple files.",
+        help=(
+            "Supports Trading212 (History → Download) and Revolut "
+            "(Stocks → Statements → Account statement CSV). "
+            "Mix multiple files; duplicates are merged automatically. "
+            "Revolut files are analyzed as USD-only."
+        ),
     )
 
 
@@ -479,8 +484,8 @@ if page_selection == "🏦 Portfolio Dashboard":
     st.markdown("""
     <div class="hero">
         <div class="hero-badge">📈 Portfolio Analytics</div>
-        <h1 class="hero-title">Trading212 Portfolio Analyzer</h1>
-        <p class="hero-sub">Upload your CSV exports · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
+        <h1 class="hero-title">Broker Portfolio CSV Analyzer</h1>
+        <p class="hero-sub">Trading212 &amp; Revolut · Explore P&amp;L across any timeline · Track dividends &amp; interest growth</p>
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -501,9 +506,10 @@ if not getattr(st.session_state, "file_data", []):
     st.markdown("""
     <br>
     <div style="font-size:2.5rem;margin-bottom:0.1rem;text-align:center;">📂</div>
-    <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your Trading212 CSV exports</div>
+    <div style="font-size:1.4rem; font-weight: 700; text-align:center; color: #fff; margin-bottom: 0.1rem;">Upload your broker CSV exports</div>
     <div style="font-size:0.85rem; text-align:center; color: rgba(226,228,240,0.4); margin-bottom: 1.5rem;">
-    Go to Trading212 → History → Download icon → Export CSV<br>
+    Trading212 → History → Download icon → Export CSV<br>
+    Revolut → Stocks → Statements → Account statement (CSV)<br>
     Please use the file uploader mapped in your left Sidebar to begin!
     </div>
     """, unsafe_allow_html=True)
@@ -572,9 +578,40 @@ if df.empty:
 
 if page_selection == "💳 Card Spending Analysis":
     metrics = analyzer.card_spending_deepdive(df)
-    
+
     if metrics["total_txns"] == 0:
-        st.info("No card spending data found in this timeframe or CSV export.")
+        brokers_in_data = sorted(df.get("_broker", pd.Series(dtype=str)).dropna().unique().tolist())
+        revolut_only = brokers_in_data == ["revolut"]
+
+        if revolut_only:
+            headline = "Card Spending data is not available from Revolut exports"
+            detail   = (
+                "Revolut's Stocks CSV only contains investing activity — "
+                "card and merchant data lives in the separate Revolut Banking "
+                "product and isn't included here.<br><br>"
+                "To unlock this page, also upload a <b>Trading212</b> CSV "
+                "that contains <code>Card debit</code> rows."
+            )
+        else:
+            headline = "No card spending data found in this date range"
+            detail   = (
+                "Your uploaded files don't contain any <code>Card debit</code> "
+                "rows within <b>{start}</b> → <b>{end}</b>.<br><br>"
+                "Try widening the date range, or upload a Trading212 export "
+                "that covers your card-spending history."
+            ).format(start=start_date.strftime("%b %d, %Y"),
+                     end=end_date.strftime("%b %d, %Y"))
+
+        st.markdown(f"""
+        <div style="margin-top:1rem;">
+          <div style="font-size:3rem; text-align:center; margin-bottom:0.5rem;">💳</div>
+          <div style="font-size:1.35rem; font-weight:700; text-align:center;
+                      color:#fff; margin-bottom:0.4rem;">{headline}</div>
+          <div style="font-size:0.9rem; text-align:center;
+                      color:rgba(226,228,240,0.55); line-height:1.7;
+                      max-width:640px; margin:0 auto;">{detail}</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
         
     section("📊 Overview")
@@ -610,10 +647,14 @@ int_series  = analyzer.interest_series(df)
 
 # Date badge
 days_in_range = (end_date - start_date).days + 1
+_broker_labels = {"trading212": "T212", "revolut": "Revolut"}
+brokers_in_data = sorted(df.get("_broker", pd.Series(dtype=str)).dropna().unique().tolist())
+broker_badge = " · ".join(_broker_labels.get(b, b.title()) for b in brokers_in_data) or "—"
 st.markdown(
     f"<div class='date-badge'>📅 <b>{start_date.strftime('%b %d, %Y')}</b>"
     f" → <b>{end_date.strftime('%b %d, %Y')}</b>"
-    f" &nbsp;·&nbsp; {len(df):,} transactions &nbsp;·&nbsp; {days_in_range} days</div>",
+    f" &nbsp;·&nbsp; {len(df):,} transactions &nbsp;·&nbsp; {days_in_range} days"
+    f" &nbsp;·&nbsp; <b>{broker_badge}</b></div>",
     unsafe_allow_html=True,
 )
 
@@ -929,6 +970,20 @@ with tabs[4]:
         ]), unsafe_allow_html=True)
 
         st.plotly_chart(charts.chart_dividend_growth(div_series), use_container_width=True, key="dividend_growth")
+
+        # Revolut-only: surface dividend-tax corrections separately when present.
+        dtc_total = summary.get("div_tax_correction_total", 0.0)
+        n_dtc = summary.get("n_div_tax_corrections", 0)
+        if n_dtc > 0:
+            st.markdown(
+                "<div class='info-callout'>"
+                f"<b>Dividend tax corrections:</b> {n_dtc} row(s) net to "
+                f"<b>${dtc_total:+,.4f}</b> in this period. "
+                "Revolut posts these as separate adjustments against prior "
+                "dividends and they're tracked independently from gross / net totals above."
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
         section("Individual Dividend Payments")
         disp = div_series.copy()
