@@ -644,6 +644,7 @@ monthly_df  = analyzer.monthly_summary(df)
 ticker_df   = analyzer.ticker_pnl(df)
 div_series  = analyzer.dividend_series(df)
 int_series  = analyzer.interest_series(df)
+return_df   = analyzer.mwrr_cumulative_timeline(df)
 
 # Date badge
 days_in_range = (end_date - start_date).days + 1
@@ -669,6 +670,35 @@ export_placeholder.download_button(
 )
 
 # ---------------------------------------------------------------------------
+# MWRR Return Hero + Net Total Yield Header
+# ---------------------------------------------------------------------------
+
+mwrr_annual = summary.get("mwrr_annual_pct", 0.0)
+mwrr_total  = summary.get("mwrr_total_pct", 0.0)
+terminal_v  = summary.get("terminal_value", 0.0)
+total_inv   = summary.get("total_invested", 0.0)
+days_inv    = summary.get("days_invested", 0)
+
+return_accent = "accent-green" if mwrr_annual >= 0 else "accent-red"
+return_sign   = "📈" if mwrr_annual >= 0 else "📉"
+
+st.markdown(cards_row([
+    card(
+        "PORTFOLIO RETURN (MWRR)",
+        f"{mwrr_annual:+.2f}% / yr",
+        f"Total: {mwrr_total:+.2f}%  ·  {days_inv} days invested",
+        return_sign,
+        f"{return_accent} accent-glow-pulse",
+        tooltip=(
+            "Money-Weighted Rate of Return (MWRR) — also known as the portfolio IRR. "
+            "Adjusts for the size and exact timing of every deposit and withdrawal, "
+            "reflecting your actual experience as an investor. "
+            "⚠️ Based on REALIZED gains only (no live market price for held positions)."
+        ),
+    ),
+]), unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
 # Net Total Yield Header
 # ---------------------------------------------------------------------------
 
@@ -678,7 +708,7 @@ net_total_yield_usd = usd_components + (eur_components / 0.86) # Fixed $1 = €0
 
 yield_accent = "accent-green" if net_total_yield_usd >= 0 else "accent-red"
 st.markdown(cards_row([
-    card("NET TOTAL YIELD (USD)", f"${net_total_yield_usd:+,.2f}", 
+    card("NET TOTAL YIELD (USD)", f"${net_total_yield_usd:+,.2f}",
          "Total Account Profit (Trades + Interest + Dividends + Cashback). Rate: 0.86 EUR = 1 USD", "🌍", f"{yield_accent} accent-glow-pulse")
 ]), unsafe_allow_html=True)
 
@@ -687,6 +717,22 @@ st.markdown(cards_row([
 # ---------------------------------------------------------------------------
 
 section("💹 Trading P&L")
+
+# -- MWRR metric row --
+st.markdown(cards_row([
+    card("Annualized Return (MWRR)", f"{mwrr_annual:+.2f}%",
+         "IRR adjusted for deposit/withdrawal timing", "📊",
+         "accent-teal" if mwrr_annual >= 0 else "accent-red",
+         tooltip="Annualized Money-Weighted Rate of Return. Accounts for how much capital was invested at each point in time."),
+    card("Total Return (MWRR)", f"{mwrr_total:+.2f}%",
+         f"Over {days_inv} days total invested", "📈" if mwrr_total >= 0 else "📉",
+         "accent-green" if mwrr_total >= 0 else "accent-red"),
+    card("Terminal Value", f"${terminal_v:,.2f}",
+         "Net deposits + realized P&L + dividends + interest", "🏦", "accent-blue",
+         tooltip="The reconstructed current portfolio value from all realized activity. Does not include unrealized gains on open positions."),
+    card("Capital Deployed", f"${total_inv:,.2f}",
+         f"Total gross deposits ({summary['n_deposits']} deposits)", "💰", "accent-amber"),
+]), unsafe_allow_html=True)
 
 net_accent = "accent-green" if summary["net_pnl"] >= 0 else "accent-red"
 st.markdown(cards_row([
@@ -741,7 +787,10 @@ if not prog_df.empty:
         show_div = col2.checkbox("Show Dividends", value=True)
         show_int = col2.checkbox("Show Interest", value=True)
     
-    st.plotly_chart(charts.chart_total_portfolio(prog_df, show_dep, show_pnl, show_div, show_int, chart_mode), use_container_width=True, key="total_portfolio")
+    st.plotly_chart(charts.chart_total_portfolio(
+        prog_df, show_dep, show_pnl, show_div, show_int, chart_mode,
+        return_df=return_df if not return_df.empty else None,
+    ), use_container_width=True, key="total_portfolio")
 
 # ---------------------------------------------------------------------------
 # Tabs
@@ -784,6 +833,17 @@ with tabs[0]:
         with col4:
             avg = timeline[timeline["Trades"] > 0]["Period P&L"].mean()
             st.metric("Avg P&L / Period", f"${avg:+,.2f}", "active periods only")
+
+    # -- MWRR Return % Dedicated Chart --
+    section("📊 Portfolio Return % (MWRR)")
+    if not return_df.empty:
+        st.plotly_chart(
+            charts.chart_return_timeline(return_df, mwrr_annual, mwrr_total),
+            use_container_width=True, key="return_timeline",
+        )
+    else:
+        st.markdown("<div class='info-callout'>Upload files with deposit history to compute MWRR.</div>",
+                    unsafe_allow_html=True)
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -863,6 +923,13 @@ with tabs[3]:
 
         st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True, key="company_bubble")
 
+        # ── Return Contribution chart ──────────────────────────
+        section("🧩 Return Contribution (% of Portfolio MWRR)")
+        st.plotly_chart(
+            charts.chart_return_contribution(company_df, mwrr_total),
+            use_container_width=True, key="return_contribution",
+        )
+
         # ── Compare section ───────────────────────────────────
         section("⚖️ Compare Companies")
         all_tickers = company_df["Ticker"].tolist()
@@ -888,9 +955,14 @@ with tabs[3]:
             # Stat cards for selected company
             row = company_df[company_df["Ticker"] == drill_ticker].iloc[0]
             net_acc = "accent-green" if row["Net P&L ($)"] >= 0 else "accent-red"
+            rc = row.get("Return Contribution (%)", 0.0)
+            rc_acc = "accent-green" if rc >= 0 else "accent-red"
             st.markdown(cards_row([
                 card("Net P&L",       f"${row['Net P&L ($)']:+,.2f}",
                      "All sell trades", "📊", net_acc),
+                card("Return Contrib",f"{rc:+.2f}%",
+                     "Share of total portfolio return", "🧩", rc_acc,
+                     tooltip="This ticker's contribution to the total portfolio MWRR. Computed as its Net P&L / total portfolio P&L × MWRR%."),
                 card("Gross Profit",  f"${row['Gross Profit ($)']:,.2f}",
                      f"{row['Winning Sells']} winning sells", "💚", "accent-green"),
                 card("Gross Loss",    f"${abs(row['Gross Loss ($)']):,.2f}",

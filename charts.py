@@ -797,14 +797,34 @@ def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
 # 12. Total Portfolio Progress area chart
 # ---------------------------------------------------------------------------
 
-def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True, show_div: bool = True, show_int: bool = True, chart_mode: str = "Line") -> go.Figure:
+def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True,
+                          show_div: bool = True, show_int: bool = True,
+                          chart_mode: str = "Line (Stacked Area)",
+                          return_df: pd.DataFrame = None) -> go.Figure:
     """
     Stacked/Overlaid area chart showing the growth of net deposits and P&L.
+    Optionally overlays the cumulative Return % curve on a secondary Y-axis.
     """
     if prog_df.empty:
         return _empty("No portfolio data available")
 
-    fig = _fig("📈 Total Portfolio Value Tracker", height=500)
+    has_return = (return_df is not None and not return_df.empty)
+
+    if has_return:
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.update_layout(
+            **{k: v for k, v in BASE_LAYOUT.items() if k not in ("xaxis", "yaxis", "legend")},
+            height=540,
+            title=dict(text="📈 Total Portfolio Value & MWRR Return %",
+                       font=dict(family=FONT, size=15, color=C_TEXT), x=0),
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            transition=dict(duration=600, easing="cubic-in-out"),
+        )
+        fig.update_xaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
+        fig.update_yaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11), secondary_y=False)
+    else:
+        fig = _fig("📈 Total Portfolio Value Tracker", height=500)
 
     # Calculate dynamic total line based on what's activated
     total_line = pd.Series(0, index=prog_df.index)
@@ -813,78 +833,271 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
     if show_div: total_line += prog_df["Daily Dividends"].fillna(0)
     if show_int: total_line += prog_df["Daily Interest"].fillna(0)
 
-    # We stack Net Deposits + P&L + Divs + Interest
+    kwargs = dict(secondary_y=False) if has_return else {}
+
     if chart_mode == "Candlestick":
         open_arr = total_line.shift(1).fillna(total_line)
         close_arr = total_line
         df_ohlc = pd.DataFrame({"open": open_arr, "close": close_arr})
         high_arr = df_ohlc.max(axis=1) * 1.002
-        low_arr = df_ohlc.min(axis=1) * 0.998
-        
+        low_arr  = df_ohlc.min(axis=1) * 0.998
         fig.add_trace(go.Candlestick(
             x=prog_df["Date"].astype(str),
-            open=open_arr,
-            high=high_arr,
-            low=low_arr,
-            close=close_arr,
+            open=open_arr, high=high_arr, low=low_arr, close=close_arr,
             name="Daily Value",
             increasing_line_color=C_GREEN, increasing_fillcolor=C_GREEN,
-            decreasing_line_color=C_RED, decreasing_fillcolor=C_RED
-        ))
-        fig.update_layout(xaxis_rangeslider_visible=False, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig.update_yaxes(title_text="Tracked Value ($)")
-        return fig
+            decreasing_line_color=C_RED, decreasing_fillcolor=C_RED,
+        ), **kwargs)
+        if not has_return:
+            fig.update_layout(xaxis_rangeslider_visible=False, hovermode="x unified",
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig.update_yaxes(title_text="Tracked Value ($)", **kwargs)
+    else:
+        if show_dep:
+            fig.add_trace(go.Scatter(
+                x=prog_df["Date"].astype(str), y=prog_df["Net Deposits"],
+                mode="lines", name="Net Deposits",
+                line=dict(color=C_BLUE, width=0),
+                fill="tozeroy", fillcolor="rgba(56,189,248,0.3)",
+                stackgroup="one",
+                hovertemplate="<b>%{x}</b><br>Net Deposits: <b>$%{y:,.2f}</b><extra></extra>",
+            ), **kwargs)
 
-    if show_dep:
+        if show_pnl:
+            fig.add_trace(go.Scatter(
+                x=prog_df["Date"].astype(str), y=prog_df["Daily P&L"],
+                mode="lines", name="Cumulative P&L",
+                line=dict(color=C_GREEN, width=0),
+                fill="tonexty", fillcolor="rgba(34,197,94,0.4)",
+                stackgroup="one",
+                hovertemplate="<b>%{x}</b><br>Cumul P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+            ), **kwargs)
+
+        if show_div:
+            fig.add_trace(go.Scatter(
+                x=prog_df["Date"].astype(str), y=prog_df["Daily Dividends"],
+                mode="lines", name="Cumulative Dividends",
+                line=dict(color=C_PURPLE, width=0),
+                fill="tonexty", fillcolor="rgba(167,139,250,0.5)",
+                stackgroup="one",
+                hovertemplate="<b>%{x}</b><br>Dividends: <b>$%{y:,.2f}</b><extra></extra>",
+            ), **kwargs)
+
+        if show_int:
+            fig.add_trace(go.Scatter(
+                x=prog_df["Date"].astype(str), y=prog_df["Daily Interest"],
+                mode="lines", name="Cumulative Interest",
+                line=dict(color=C_AMBER, width=0),
+                fill="tonexty", fillcolor="rgba(251,191,36,0.6)",
+                stackgroup="one",
+                hovertemplate="<b>%{x}</b><br>Interest: <b>$%{y:,.2f}</b><extra></extra>",
+            ), **kwargs)
+
         fig.add_trace(go.Scatter(
-            x=prog_df["Date"].astype(str), y=prog_df["Net Deposits"],
-            mode="lines", name="Net Deposits",
-            line=dict(color=C_BLUE, width=0),
-            fill="tozeroy", fillcolor="rgba(56,189,248,0.3)",
-            stackgroup="one",
-            hovertemplate="<b>%{x}</b><br>Net Deposits: <b>$%{y:,.2f}</b><extra></extra>"
-        ))
+            x=prog_df["Date"].astype(str), y=total_line,
+            mode="lines", name="Tracked Summary",
+            line=dict(color=C_TEXT, width=2, shape="spline"),
+            hovertemplate="<b>%{x}</b><br>Tracked Summary: <b>$%{y:,.2f}</b><extra></extra>",
+        ), **kwargs)
 
-    if show_pnl:
+        if not has_return:
+            fig.update_layout(hovermode="x unified",
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig.update_yaxes(title_text="Tracked Value ($)", **kwargs)
+
+    # ── Overlay: MWRR Return % on secondary Y-axis ──
+    if has_return and "Return %" in return_df.columns:
+        r = return_df["Return %"].values
+        last_r = float(r[-1])
+        line_color = C_TEAL if last_r >= 0 else C_RED
         fig.add_trace(go.Scatter(
-            x=prog_df["Date"].astype(str), y=prog_df["Daily P&L"],
-            mode="lines", name="Cumulative P&L",
-            line=dict(color=C_GREEN, width=0),
-            fill="tonexty", fillcolor="rgba(34,197,94,0.4)",
-            stackgroup="one",
-            hovertemplate="<b>%{x}</b><br>Cumul P&L: <b>$%{y:+,.2f}</b><extra></extra>"
-        ))
+            x=return_df["Date"].astype(str),
+            y=r,
+            mode="lines",
+            name="Return % (MWRR)",
+            line=dict(color=line_color, width=2.5, dash="dot", shape="spline", smoothing=0.5),
+            hovertemplate="<b>%{x}</b><br>Portfolio Return: <b>%{y:+.2f}%</b><extra></extra>",
+        ), secondary_y=True)
+        fig.update_yaxes(
+            title_text="Return % (MWRR)",
+            ticksuffix="%",
+            showgrid=False,
+            tickfont=dict(color=C_TEAL, size=11),
+            title_font=dict(color=C_TEAL, size=11),
+            secondary_y=True,
+        )
 
-    if show_div:
-        fig.add_trace(go.Scatter(
-            x=prog_df["Date"].astype(str), y=prog_df["Daily Dividends"],
-            mode="lines", name="Cumulative Dividends",
-            line=dict(color=C_PURPLE, width=0),
-            fill="tonexty", fillcolor="rgba(167,139,250,0.5)",
-            stackgroup="one",
-            hovertemplate="<b>%{x}</b><br>Dividends: <b>$%{y:,.2f}</b><extra></extra>"
-        ))
+    return fig
 
-    if show_int:
-        fig.add_trace(go.Scatter(
-            x=prog_df["Date"].astype(str), y=prog_df["Daily Interest"],
-            mode="lines", name="Cumulative Interest",
-            line=dict(color=C_AMBER, width=0),
-            fill="tonexty", fillcolor="rgba(251,191,36,0.6)",
-            stackgroup="one",
-            hovertemplate="<b>%{x}</b><br>Interest: <b>$%{y:,.2f}</b><extra></extra>"
-        ))
 
-    # Add the top line outline for total value
+# ---------------------------------------------------------------------------
+# 13. Dedicated Return % / MWRR timeline chart
+# ---------------------------------------------------------------------------
+
+def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
+                          mwrr_total: float = 0.0) -> go.Figure:
+    """
+    Standalone premium chart for cumulative portfolio Return %.
+    Shows the return curve with gradient fill, milestone annotation,
+    and the final MWRR stats stamped on the title.
+    """
+    if return_df.empty or "Return %" not in return_df.columns:
+        return _empty("Insufficient data to compute return curve")
+
+    r = return_df["Return %"].values
+    x = return_df["Date"].astype(str)
+    final = float(r[-1])
+    is_positive = final >= 0
+    line_color = C_GREEN if is_positive else C_RED
+    fill_color = "rgba(0,255,136,0.12)" if is_positive else "rgba(255,0,85,0.12)"
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.70, 0.30],
+        vertical_spacing=0.04,
+    )
+
+    # ── Top: Return % curve ──
     fig.add_trace(go.Scatter(
-        x=prog_df["Date"].astype(str), y=total_line,
-        mode="lines", name="Tracked Summary",
-        line=dict(color=C_TEXT, width=2, shape="spline"),
-        hovertemplate="<b>%{x}</b><br>Tracked Summary: <b>$%{y:,.2f}</b><extra></extra>"
+        x=x, y=r,
+        mode="lines",
+        name="Cumulative Return %",
+        line=dict(color=line_color, width=3, shape="spline", smoothing=0.5),
+        fill="tozeroy",
+        fillcolor=fill_color,
+        customdata=np.column_stack([
+            return_df["Terminal Value ($)"].values,
+            return_df["Cumul Deposits ($)"].values,
+            return_df["Total Gains ($)"].values,
+        ]),
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "────────────────────<br>"
+            "Return       : <b>%{y:+.2f}%</b><br>"
+            "Terminal Val : <b>$%{customdata[0]:,.2f}</b><br>"
+            "Deposited    : <b>$%{customdata[1]:,.2f}</b><br>"
+            "Total Gains  : <b>$%{customdata[2]:+,.2f}</b>"
+            "<extra></extra>"
+        ),
+    ), row=1, col=1)
+
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=1, col=1)
+
+    # Annotate the current return
+    fig.add_annotation(
+        x=x.iloc[-1], y=final,
+        text=f"<b>{final:+.2f}%</b>",
+        showarrow=True, arrowhead=2,
+        arrowcolor=line_color,
+        font=dict(color=line_color, size=14, family=FONT),
+        bgcolor="rgba(7,7,10,0.85)",
+        bordercolor=line_color, borderwidth=1,
+        borderpad=5, row=1, col=1,
+    )
+
+    # ── Bottom: Daily delta in total gains (bar) ──
+    daily_delta = return_df["Total Gains ($)"].diff().fillna(0)
+    bar_cols = [C_GREEN if v >= 0 else C_RED for v in daily_delta]
+    fig.add_trace(go.Bar(
+        x=x, y=daily_delta,
+        name="Daily Gains Δ ($)",
+        marker_color=bar_cols,
+        marker_line_width=0,
+        hovertemplate="<b>%{x}</b><br>Daily Δ: <b>$%{y:+,.2f}</b><extra></extra>",
+    ), row=2, col=1)
+    fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=2, col=1)
+
+    ann_color = C_GREEN if mwrr_annual >= 0 else C_RED
+    tot_color = C_GREEN if mwrr_total >= 0 else C_RED
+    fig.update_layout(
+        **{k: v for k, v in BASE_LAYOUT.items() if k not in ("xaxis", "yaxis")},
+        height=560,
+        title=dict(
+            text=(
+                f"📊 Portfolio Return (MWRR)  ·  "
+                f"<span style='color:{ann_color}'>Annualized {mwrr_annual:+.2f}%</span>  ·  "
+                f"<span style='color:{tot_color}'>Total {mwrr_total:+.2f}%</span>"
+            ),
+            font=dict(family=FONT, size=14, color=C_TEXT),
+            x=0, xanchor="left",
+        ),
+        showlegend=False,
+        hovermode="x unified",
+    )
+    fig.update_xaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
+    fig.update_yaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
+    fig.update_yaxes(title_text="Return %", ticksuffix="%", row=1, col=1,
+                     title_font=dict(color=C_MUTED, size=11))
+    fig.update_yaxes(title_text="Daily Gains Δ ($)", row=2, col=1,
+                     title_font=dict(color=C_MUTED, size=11))
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 14. Return Contribution waterfall / bar chart
+# ---------------------------------------------------------------------------
+
+def chart_return_contribution(company_df: pd.DataFrame, mwrr_total: float = 0.0) -> go.Figure:
+    """
+    Horizontal bar chart showing each ticker's % contribution to total portfolio return.
+    Positive = drove the return up; Negative = dragged the return down.
+    """
+    if company_df.empty or "Return Contribution (%)" not in company_df.columns:
+        return _empty("No company return contribution data available")
+
+    df = company_df.copy()
+    df = df[df["Return Contribution (%)"] != 0].copy()
+    if df.empty:
+        return _empty("All positions have zero contribution")
+    # Top 20 by absolute contribution, sorted ascending for horizontal bar
+    df = df.reindex(df["Return Contribution (%)"].abs().nlargest(20).index)
+    df = df.sort_values("Return Contribution (%)")
+
+    colors = [C_GREEN if v >= 0 else C_RED for v in df["Return Contribution (%)"]]
+
+    fig = _fig("🧩 Return Contribution by Position", height=max(380, len(df) * 38))
+
+    fig.add_trace(go.Bar(
+        y=df["Ticker"],
+        x=df["Return Contribution (%)"],
+        orientation="h",
+        marker_color=colors,
+        marker_line_width=0,
+        customdata=df[["Net P&L ($)", "Win Rate (%)", "Vol Bought ($)"]].values,
+        text=[f"{v:+.1f}%" for v in df["Return Contribution (%)"]],
+        textposition="outside",
+        cliponaxis=False,
+        textfont=dict(size=11, color=colors),
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "────────────────────<br>"
+            "Return Contribution : <b>%{x:+.2f}%</b><br>"
+            "Net P&L             : <b>$%{customdata[0]:+,.2f}</b><br>"
+            "Win Rate            : %{customdata[1]:.1f}%<br>"
+            "Vol Bought          : $%{customdata[2]:,.0f}"
+            "<extra></extra>"
+        ),
     ))
 
-    fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    fig.update_yaxes(title_text="Tracked Value ($)")
+    _add_zero_line(fig, axis="x")
+    max_v = df["Return Contribution (%)"].abs().max() if not df.empty else 1.0
+    fig.update_xaxes(
+        title_text="Return Contribution (%)",
+        range=[-(max_v * 1.3), max_v * 1.3],
+        ticksuffix="%",
+    )
+
+    sign_col = C_GREEN if mwrr_total >= 0 else C_RED
+    fig.add_annotation(
+        text=f"<b>Portfolio MWRR Total: {mwrr_total:+.2f}%</b>",
+        xref="paper", yref="paper",
+        x=1.0, y=1.04,
+        showarrow=False,
+        font=dict(size=12, color=sign_col, family=FONT),
+        align="right",
+    )
 
     return fig
 

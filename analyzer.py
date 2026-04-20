@@ -248,7 +248,7 @@ def compute_summary(df: pd.DataFrame) -> dict:
     n_losses          = int(sells_validated["is_loss"].sum()) if not sells_validated.empty else 0
     n_valid_sells     = int(sells_validated["is_valid_trade"].sum()) if not sells_validated.empty else 0
 
-    return {
+    result = {
         "gross_profit": gross_profit,
         "gross_loss": gross_loss,
         "net_pnl": net_pnl,
@@ -279,6 +279,213 @@ def compute_summary(df: pd.DataFrame) -> dict:
         "n_stock_splits": len(stock_splits),
         "brokers": sorted(df.get("_broker", pd.Series(dtype=str)).dropna().unique().tolist()),
     }
+
+    # Attach MWRR metrics
+    mwrr = compute_mwrr(df)
+    result.update(mwrr)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# MWRR (Money-Weighted Rate of Return) — IRR Engine
+# ---------------------------------------------------------------------------
+
+def _solve_irr(cashflows_dated: list, guess: float = 0.05,
+               max_iter: int = 200, tol: float = 1e-9) -> float:
+    """
+    Pure-Python IRR solver using Newton-Raphson with bisection fallback.
+
+    cashflows_dated: list of (days_from_start: float, amount: float)
+        Negative = money going IN (deposits), Positive = money coming OUT or terminal value.
+
+    Returns the daily rate r such that sum( cf / (1+r)^t ) ≈ 0.
+    Converts to annualized percentage in the caller.
+    """
+    if not cashflows_dated:
+        return 0.0
+
+    def npv(r):
+        return sum(cf / (1 + r) ** t for t, cf in cashflows_dated)
+
+    def npv_deriv(r):
+        return sum(-t * cf / (1 + r) ** (t + 1) for t, cf in cashflows_dated)
+
+    # Newton-Raphson
+    r = guess
+    for _ in range(max_iter):
+        f = npv(r)
+        fp = npv_deriv(r)
+        if abs(fp) < 1e-14:
+            break
+        r_new = r - f / fp
+        # Clamp to prevent divergence
+        r_new = max(r_new, -0.999)
+        if abs(r_new - r) < tol:
+            return r_new
+        r = r_new
+
+    # Fallback: bisection on [-0.99, 5.0]
+    lo, hi = -0.99, 5.0
+    if npv(lo) * npv(hi) > 0:
+        # No root in range — return simple approximation
+        return 0.0
+    for _ in range(500):
+        mid = (lo + hi) / 2.0
+        if npv(mid) * npv(lo) < 0:
+            hi = mid
+        else:
+            lo = mid
+        if abs(hi - lo) < tol:
+            return mid
+    return (lo + hi) / 2.0
+
+
+def compute_mwrr(df: pd.DataFrame) -> dict:
+    """
+    Compute portfolio-level Money-Weighted Rate of Return.
+
+    Cash-flow convention (IRR standard):
+      • Deposits   → negative (money flowing INTO the portfolio)
+      • Withdrawals → positive (money flowing OUT)
+      • Terminal value → positive (what the portfolio is "worth" at the end)
+
+    Terminal value = net_deposits + realized_pnl + dividends + interest
+    (i.e. the "Total Value Tracked" from portfolio_progress_daily).
+
+    All amounts are treated as USD.
+    """
+    empty = {
+        "mwrr_annual_pct": 0.0,
+        "mwrr_total_pct": 0.0,
+        "terminal_value": 0.0,
+        "total_invested": 0.0,
+        "days_invested": 0,
+    }
+
+    if df.empty:
+        return empty
+
+    # Collect cash flows
+    deposits    = df[df["_category"] == "deposit"].copy()
+    withdrawals = df[df["_category"] == "withdrawal"].copy()
+    card_debits = df[df["_category"] == "card_debit"].copy()
+
+    if deposits.empty:
+        return empty
+
+    t0 = df["Time"].min()
+
+    cf_list = []  # (days_from_start, amount)
+
+    # Deposits are money IN → negative for IRR
+    for _, row in deposits.iterrows():
+        days = (row["Time"] - t0).total_seconds() / 86400.0
+        cf_list.append((days, -abs(float(row.get("Total", 0) or 0))))
+
+    # Withdrawals are money OUT → positive for IRR
+    for _, row in withdrawals.iterrows():
+        days = (row["Time"] - t0).total_seconds() / 86400.0
+        cf_list.append((days, abs(float(row.get("Total", 0) or 0))))
+
+    # Card debits are money OUT → positive for IRR
+    for _, row in card_debits.iterrows():
+        days = (row["Time"] - t0).total_seconds() / 86400.0
+        cf_list.append((days, abs(float(row.get("Total", 0) or 0))))
+
+    # Compute terminal value
+    total_deposited = float(deposits["Total"].fillna(0).abs().sum())
+    total_withdrawn = float(withdrawals["Total"].fillna(0).abs().sum())
+    total_card_spent = float(card_debits["Total"].fillna(0).abs().sum())
+    net_deposits = total_deposited - total_withdrawn - total_card_spent
+
+    sells = df[df["_category"] == "sell"]
+    realized_pnl = float(sells["Result"].fillna(0).sum())
+    div_total = float(df[df["_category"] == "dividend"]["Total"].fillna(0).sum())
+    int_total = float(df[df["_category"] == "interest"]["Total"].fillna(0).sum())
+
+    terminal = net_deposits + realized_pnl + div_total + int_total
+
+    # Terminal value as final positive cash flow
+    t_end = df["Time"].max()
+    days_total = max((t_end - t0).total_seconds() / 86400.0, 1.0)
+    cf_list.append((days_total, terminal))
+
+    # Simple return (fallback & sanity check)
+    total_invested = total_deposited
+    simple_return_pct = ((terminal - net_deposits) / net_deposits * 100) if net_deposits > 0 else 0.0
+
+    # Solve for daily IRR
+    try:
+        daily_r = _solve_irr(cf_list, guess=0.0001)
+        annual_r = (1 + daily_r) ** 365 - 1
+        total_r = (1 + daily_r) ** days_total - 1
+    except Exception:
+        annual_r = 0.0
+        total_r = simple_return_pct / 100.0
+
+    return {
+        "mwrr_annual_pct": round(annual_r * 100, 2),
+        "mwrr_total_pct": round(total_r * 100, 2),
+        "terminal_value": round(terminal, 2),
+        "total_invested": round(total_invested, 2),
+        "days_invested": int(days_total),
+    }
+
+
+def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute a daily cumulative return % curve.
+
+    For each day, we compute the running terminal value and the running
+    total invested, giving a simple cumulative return percentage.
+    This provides a smooth growth curve that reflects how the portfolio
+    value has evolved relative to capital deployed.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    start_date = df["Time"].min().date()
+    end_date = df["Time"].max().date()
+    all_days = pd.date_range(start_date, end_date, freq="D")
+
+    def daily_agg(condition, col="Total", force_abs=False):
+        sub = df[condition].copy()
+        if sub.empty:
+            return pd.Series(0, index=all_days)
+        sub["Date"] = sub["Time"].dt.date
+        if force_abs:
+            sub[col] = sub[col].abs()
+        return sub.groupby("Date")[col].sum().reindex(all_days.date, fill_value=0)
+
+    dep = daily_agg(df["_category"] == "deposit", "Total", force_abs=True).cumsum()
+    wdr = daily_agg(df["_category"] == "withdrawal", "Total", force_abs=True).cumsum()
+    crd = daily_agg(df["_category"] == "card_debit", "Total", force_abs=True).cumsum()
+    pnl = daily_agg(df["_category"] == "sell", "Result").cumsum()
+    divs = daily_agg(df["_category"] == "dividend", "Total").cumsum()
+    ints = daily_agg(df["_category"] == "interest", "Total").cumsum()
+
+    net_dep = dep - wdr - crd
+    terminal = net_dep + pnl + divs + ints
+    gains = pnl + divs + ints  # total gains component
+
+    # Return % = gains / capital deployed so far, where capital = cumulative deposits
+    # Use dep (total deposited) as denominator to avoid division by small net_dep values
+    return_pct = np.where(dep > 0, gains / dep * 100, 0.0)
+
+    result = pd.DataFrame({
+        "Date": all_days.date,
+        "Cumul Deposits ($)": dep.values,
+        "Net Deposits ($)": net_dep.values,
+        "Cumul P&L ($)": pnl.values,
+        "Cumul Dividends ($)": divs.values,
+        "Cumul Interest ($)": ints.values,
+        "Total Gains ($)": gains.values,
+        "Terminal Value ($)": terminal.values,
+        "Return %": return_pct,
+    })
+
+    return result
+
 
 import io
 
@@ -592,7 +799,17 @@ def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
         })
 
     result = pd.DataFrame(rows)
-    return result.sort_values("Net P&L ($)", ascending=False).reset_index(drop=True)
+    result = result.sort_values("Net P&L ($)", ascending=False).reset_index(drop=True)
+
+    # Return Contribution (%): each ticker's share of total realized P&L,
+    # used to show how much each position contributed to overall portfolio return.
+    total_pnl = result["Net P&L ($)"].sum()
+    if total_pnl != 0:
+        result["Return Contribution (%)"] = (result["Net P&L ($)"] / total_pnl * 100).round(2)
+    else:
+        result["Return Contribution (%)"] = 0.0
+
+    return result
 
 
 def company_trade_history(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
