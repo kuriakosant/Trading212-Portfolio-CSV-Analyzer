@@ -290,72 +290,96 @@ def compute_summary(df: pd.DataFrame) -> dict:
 # MWRR (Money-Weighted Rate of Return) — IRR Engine
 # ---------------------------------------------------------------------------
 
-def _solve_irr(cashflows_dated: list, guess: float = 0.05,
-               max_iter: int = 200, tol: float = 1e-9) -> float:
+def _solve_irr_annual(cashflows_yearly: list, tol: float = 1e-9) -> float:
     """
-    Pure-Python IRR solver using Newton-Raphson with bisection fallback.
+    Solve for the annualized IRR directly.
 
-    cashflows_dated: list of (days_from_start: float, amount: float)
-        Negative = money going IN (deposits), Positive = money coming OUT or terminal value.
+    cashflows_yearly: list of (years_from_start: float, amount: float)
+        Negative = money IN (deposits), Positive = money OUT or terminal value.
 
-    Returns the daily rate r such that sum( cf / (1+r)^t ) ≈ 0.
-    Converts to annualized percentage in the caller.
+    Works in annualized rate space so the search domain stays human-readable:
+    bisection is bounded to [-99%, +1000%] annual, preventing the astronomical
+    compounding that happens when working in daily rates on short periods.
+
+    Uses multi-start Newton-Raphson (low / mid / high seeds) then falls back
+    to bisection if none converge within the bounded window.
     """
-    if not cashflows_dated:
+    if not cashflows_yearly:
         return 0.0
 
     def npv(r):
-        return sum(cf / (1 + r) ** t for t, cf in cashflows_dated)
+        # Guard: r must be > -1 to avoid (1+r)^t on negative base
+        if r <= -1.0:
+            return float("inf")
+        return sum(cf / (1.0 + r) ** t for t, cf in cashflows_yearly)
 
     def npv_deriv(r):
-        return sum(-t * cf / (1 + r) ** (t + 1) for t, cf in cashflows_dated)
+        if r <= -1.0:
+            return float("inf")
+        return sum(-t * cf / (1.0 + r) ** (t + 1.0) for t, cf in cashflows_yearly)
 
-    # Newton-Raphson
-    r = guess
-    for _ in range(max_iter):
-        f = npv(r)
-        fp = npv_deriv(r)
-        if abs(fp) < 1e-14:
-            break
-        r_new = r - f / fp
-        # Clamp to prevent divergence
-        r_new = max(r_new, -0.999)
-        if abs(r_new - r) < tol:
-            return r_new
-        r = r_new
+    # Multi-start Newton-Raphson with three seeds
+    for guess in (0.10, 0.50, -0.10):
+        r = guess
+        converged = False
+        for _ in range(300):
+            f  = npv(r)
+            fp = npv_deriv(r)
+            if abs(fp) < 1e-14:
+                break
+            step = f / fp
+            r_new = r - step
+            # Keep within sane annual bounds
+            r_new = max(-0.9999, min(r_new, 10.0))
+            if abs(r_new - r) < tol:
+                r = r_new
+                converged = True
+                break
+            r = r_new
+        if converged and -0.9999 < r < 10.0:
+            # Sanity-check: NPV at solution should be near zero
+            if abs(npv(r)) < 1.0:          # $1 tolerance is fine for typical portfolios
+                return r
 
-    # Fallback: bisection on [-0.99, 5.0]
-    lo, hi = -0.99, 5.0
-    if npv(lo) * npv(hi) > 0:
-        # No root in range — return simple approximation
-        return 0.0
-    for _ in range(500):
+    # Bisection fallback — bounded to [-99%, +1000%]
+    lo, hi = -0.99, 10.0
+    npv_lo = npv(lo)
+    npv_hi = npv(hi)
+
+    if npv_lo * npv_hi > 0:
+        # No bracketed root → fall back to 0 (caller uses simple return)
+        return float("nan")
+
+    for _ in range(600):
         mid = (lo + hi) / 2.0
-        if npv(mid) * npv(lo) < 0:
+        if npv(mid) * npv_lo < 0:
             hi = mid
         else:
             lo = mid
+            npv_lo = npv(lo)
         if abs(hi - lo) < tol:
-            return mid
+            break
+
     return (lo + hi) / 2.0
 
 
 def compute_mwrr(df: pd.DataFrame) -> dict:
     """
-    Compute portfolio-level Money-Weighted Rate of Return.
+    Compute portfolio-level Money-Weighted Rate of Return (MWRR / portfolio IRR).
 
     Cash-flow convention (IRR standard):
-      • Deposits   → negative (money flowing INTO the portfolio)
+      • Deposits    → negative (money flowing INTO the portfolio)
       • Withdrawals → positive (money flowing OUT)
-      • Terminal value → positive (what the portfolio is "worth" at the end)
+      • Terminal value → positive cash flow at the end of the period
 
-    Terminal value = net_deposits + realized_pnl + dividends + interest
-    (i.e. the "Total Value Tracked" from portfolio_progress_daily).
-
+    Terminal value = net_deposits + realized_pnl + dividends + interest.
     All amounts are treated as USD.
+
+    Annualized MWRR is only meaningful for periods ≥ 180 days; for shorter
+    windows it is set to None and the UI shows "N/A (< 6 mo)" instead.
     """
     empty = {
-        "mwrr_annual_pct": 0.0,
+        "mwrr_annual_pct": None,          # None = not enough history to annualize
         "mwrr_total_pct": 0.0,
         "terminal_value": 0.0,
         "total_invested": 0.0,
@@ -365,7 +389,6 @@ def compute_mwrr(df: pd.DataFrame) -> dict:
     if df.empty:
         return empty
 
-    # Collect cash flows
     deposits    = df[df["_category"] == "deposit"].copy()
     withdrawals = df[df["_category"] == "withdrawal"].copy()
     card_debits = df[df["_category"] == "card_debit"].copy()
@@ -373,63 +396,84 @@ def compute_mwrr(df: pd.DataFrame) -> dict:
     if deposits.empty:
         return empty
 
-    t0 = df["Time"].min()
+    t0    = df["Time"].min()
+    t_end = df["Time"].max()
+    days_total  = max((t_end - t0).total_seconds() / 86400.0, 1.0)
+    years_total = days_total / 365.0
 
-    cf_list = []  # (days_from_start, amount)
+    # Build cash-flow list in YEARS (not days) so the solver works in annual space
+    cf_years = []
 
-    # Deposits are money IN → negative for IRR
     for _, row in deposits.iterrows():
-        days = (row["Time"] - t0).total_seconds() / 86400.0
-        cf_list.append((days, -abs(float(row.get("Total", 0) or 0))))
+        yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
+        cf_years.append((yrs, -abs(float(row.get("Total", 0) or 0))))
 
-    # Withdrawals are money OUT → positive for IRR
     for _, row in withdrawals.iterrows():
-        days = (row["Time"] - t0).total_seconds() / 86400.0
-        cf_list.append((days, abs(float(row.get("Total", 0) or 0))))
+        yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
+        cf_years.append((yrs, abs(float(row.get("Total", 0) or 0))))
 
-    # Card debits are money OUT → positive for IRR
     for _, row in card_debits.iterrows():
-        days = (row["Time"] - t0).total_seconds() / 86400.0
-        cf_list.append((days, abs(float(row.get("Total", 0) or 0))))
+        yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
+        cf_years.append((yrs, abs(float(row.get("Total", 0) or 0))))
 
     # Compute terminal value
-    total_deposited = float(deposits["Total"].fillna(0).abs().sum())
-    total_withdrawn = float(withdrawals["Total"].fillna(0).abs().sum())
+    total_deposited  = float(deposits["Total"].fillna(0).abs().sum())
+    total_withdrawn  = float(withdrawals["Total"].fillna(0).abs().sum())
     total_card_spent = float(card_debits["Total"].fillna(0).abs().sum())
-    net_deposits = total_deposited - total_withdrawn - total_card_spent
+    net_deposits     = total_deposited - total_withdrawn - total_card_spent
 
-    sells = df[df["_category"] == "sell"]
+    sells        = df[df["_category"] == "sell"]
     realized_pnl = float(sells["Result"].fillna(0).sum())
-    div_total = float(df[df["_category"] == "dividend"]["Total"].fillna(0).sum())
-    int_total = float(df[df["_category"] == "interest"]["Total"].fillna(0).sum())
+    div_total    = float(df[df["_category"] == "dividend"]["Total"].fillna(0).sum())
+    int_total    = float(df[df["_category"] == "interest"]["Total"].fillna(0).sum())
 
     terminal = net_deposits + realized_pnl + div_total + int_total
 
-    # Terminal value as final positive cash flow
-    t_end = df["Time"].max()
-    days_total = max((t_end - t0).total_seconds() / 86400.0, 1.0)
-    cf_list.append((days_total, terminal))
+    # Terminal value as the closing positive cash flow
+    cf_years.append((years_total, terminal))
 
-    # Simple return (fallback & sanity check)
-    total_invested = total_deposited
-    simple_return_pct = ((terminal - net_deposits) / net_deposits * 100) if net_deposits > 0 else 0.0
+    # Simple total return % — always reliable, used as fallback
+    simple_total_pct = (
+        (terminal - net_deposits) / net_deposits * 100
+        if net_deposits > 0 else 0.0
+    )
 
-    # Solve for daily IRR
+    # --- Solve ---
     try:
-        daily_r = _solve_irr(cf_list, guess=0.0001)
-        annual_r = (1 + daily_r) ** 365 - 1
-        total_r = (1 + daily_r) ** days_total - 1
+        annual_r = _solve_irr_annual(cf_years)
+
+        if (
+            np.isnan(annual_r)
+            or not np.isfinite(annual_r)
+            or annual_r < -0.999
+            or annual_r > 9.99     # > 999% annual is almost certainly a solver artefact
+        ):
+            # Fall back to simple annualization
+            annual_r = (1.0 + simple_total_pct / 100.0) ** (1.0 / years_total) - 1.0
+
+        total_r = (1.0 + annual_r) ** years_total - 1.0
+
+        # Final guard: if total_r disagrees badly with simple_total fallback,
+        # trust the simple number (protects against very short periods)
+        if net_deposits > 0 and abs(total_r * 100 - simple_total_pct) > max(50.0, abs(simple_total_pct) * 2):
+            annual_r = (1.0 + simple_total_pct / 100.0) ** (1.0 / years_total) - 1.0
+            total_r  = simple_total_pct / 100.0
+
     except Exception:
-        annual_r = 0.0
-        total_r = simple_return_pct / 100.0
+        total_r  = simple_total_pct / 100.0
+        annual_r = (1.0 + total_r) ** (1.0 / years_total) - 1.0 if years_total > 0 else 0.0
+
+    # Annualized is only meaningful for periods ≥ 180 days
+    annual_pct = round(annual_r * 100, 2) if days_total >= 180 else None
 
     return {
-        "mwrr_annual_pct": round(annual_r * 100, 2),
-        "mwrr_total_pct": round(total_r * 100, 2),
-        "terminal_value": round(terminal, 2),
-        "total_invested": round(total_invested, 2),
-        "days_invested": int(days_total),
+        "mwrr_annual_pct": annual_pct,
+        "mwrr_total_pct":  round(total_r * 100, 2),
+        "terminal_value":  round(terminal, 2),
+        "total_invested":  round(total_deposited, 2),
+        "days_invested":   int(days_total),
     }
+
 
 
 def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:

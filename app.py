@@ -673,27 +673,33 @@ export_placeholder.download_button(
 # MWRR Return Hero + Net Total Yield Header
 # ---------------------------------------------------------------------------
 
-mwrr_annual = summary.get("mwrr_annual_pct", 0.0)
+mwrr_annual = summary.get("mwrr_annual_pct", None)   # None when period < 180 days
 mwrr_total  = summary.get("mwrr_total_pct", 0.0)
 terminal_v  = summary.get("terminal_value", 0.0)
 total_inv   = summary.get("total_invested", 0.0)
 days_inv    = summary.get("days_invested", 0)
 
-return_accent = "accent-green" if mwrr_annual >= 0 else "accent-red"
-return_sign   = "📈" if mwrr_annual >= 0 else "📉"
+# Display helpers
+_annual_str = f"{mwrr_annual:+.2f}% / yr" if mwrr_annual is not None else "N/A (< 6 mo)"
+_annual_sub = f"Total: {mwrr_total:+.2f}%  \u00b7  {days_inv} days" + (
+    "" if mwrr_annual is not None else "  \u00b7  annualize needs \u2265180 days"
+)
+return_accent = ("accent-green" if (mwrr_annual or mwrr_total) >= 0 else "accent-red") if mwrr_annual is not None else "accent-gray"
+return_sign   = "\U0001f4c8" if (mwrr_annual if mwrr_annual is not None else mwrr_total) >= 0 else "\U0001f4c9"
 
 st.markdown(cards_row([
     card(
         "PORTFOLIO RETURN (MWRR)",
-        f"{mwrr_annual:+.2f}% / yr",
-        f"Total: {mwrr_total:+.2f}%  ·  {days_inv} days invested",
+        _annual_str,
+        _annual_sub,
         return_sign,
         f"{return_accent} accent-glow-pulse",
         tooltip=(
             "Money-Weighted Rate of Return (MWRR) — also known as the portfolio IRR. "
             "Adjusts for the size and exact timing of every deposit and withdrawal, "
             "reflecting your actual experience as an investor. "
-            "⚠️ Based on REALIZED gains only (no live market price for held positions)."
+            "\u26a0\ufe0f Based on REALIZED gains only (no live market price for held positions). "
+            "Annualized figure requires at least 180 days of data."
         ),
     ),
 ]), unsafe_allow_html=True)
@@ -719,19 +725,20 @@ st.markdown(cards_row([
 section("💹 Trading P&L")
 
 # -- MWRR metric row --
+_ann_val    = f"{mwrr_annual:+.2f}%" if mwrr_annual is not None else "N/A (< 6 mo)"
+_ann_sub    = "IRR adjusted for deposit/withdrawal timing" if mwrr_annual is not None else "Need ≥180 days to annualize"
+_ann_accent = ("accent-teal" if mwrr_annual >= 0 else "accent-red") if mwrr_annual is not None else "accent-gray"
 st.markdown(cards_row([
-    card("Annualized Return (MWRR)", f"{mwrr_annual:+.2f}%",
-         "IRR adjusted for deposit/withdrawal timing", "📊",
-         "accent-teal" if mwrr_annual >= 0 else "accent-red",
-         tooltip="Annualized Money-Weighted Rate of Return. Accounts for how much capital was invested at each point in time."),
+    card("Annualized Return (MWRR)", _ann_val, _ann_sub, "\U0001f4ca", _ann_accent,
+         tooltip="Annualized Money-Weighted Rate of Return. Accounts for how much capital was invested at each point in time. Shown only for periods ≥ 180 days."),
     card("Total Return (MWRR)", f"{mwrr_total:+.2f}%",
-         f"Over {days_inv} days total invested", "📈" if mwrr_total >= 0 else "📉",
+         f"Over {days_inv} days total invested", "\U0001f4c8" if mwrr_total >= 0 else "\U0001f4c9",
          "accent-green" if mwrr_total >= 0 else "accent-red"),
     card("Terminal Value", f"${terminal_v:,.2f}",
-         "Net deposits + realized P&L + dividends + interest", "🏦", "accent-blue",
+         "Net deposits + realized P&L + dividends + interest", "\U0001f3e6", "accent-blue",
          tooltip="The reconstructed current portfolio value from all realized activity. Does not include unrealized gains on open positions."),
     card("Capital Deployed", f"${total_inv:,.2f}",
-         f"Total gross deposits ({summary['n_deposits']} deposits)", "💰", "accent-amber"),
+         f"Total gross deposits ({summary['n_deposits']} deposits)", "\U0001f4b0", "accent-amber"),
 ]), unsafe_allow_html=True)
 
 net_accent = "accent-green" if summary["net_pnl"] >= 0 else "accent-red"
@@ -838,7 +845,11 @@ with tabs[0]:
     section("📊 Portfolio Return % (MWRR)")
     if not return_df.empty:
         st.plotly_chart(
-            charts.chart_return_timeline(return_df, mwrr_annual, mwrr_total),
+            charts.chart_return_timeline(
+                return_df,
+                mwrr_annual if mwrr_annual is not None else float("nan"),
+                mwrr_total,
+            ),
             use_container_width=True, key="return_timeline",
         )
     else:

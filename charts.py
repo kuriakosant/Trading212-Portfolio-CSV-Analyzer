@@ -1008,15 +1008,18 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
     ), row=2, col=1)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=2, col=1)
 
-    ann_color = C_GREEN if mwrr_annual >= 0 else C_RED
-    tot_color = C_GREEN if mwrr_total >= 0 else C_RED
+    _ann_valid = np.isfinite(mwrr_annual) if not isinstance(mwrr_annual, float) or True else False
+    _ann_valid = np.isfinite(float(mwrr_annual))
+    ann_color  = (C_GREEN if mwrr_annual >= 0 else C_RED) if _ann_valid else C_MUTED
+    tot_color  = C_GREEN if mwrr_total >= 0 else C_RED
+    _ann_label = f"Annualized {mwrr_annual:+.2f}%" if _ann_valid else "Annualized N/A (< 6 mo)"
     fig.update_layout(
         **{k: v for k, v in BASE_LAYOUT.items() if k not in ("xaxis", "yaxis")},
         height=560,
         title=dict(
             text=(
                 f"📊 Portfolio Return (MWRR)  ·  "
-                f"<span style='color:{ann_color}'>Annualized {mwrr_annual:+.2f}%</span>  ·  "
+                f"<span style='color:{ann_color}'>{_ann_label}</span>  ·  "
                 f"<span style='color:{tot_color}'>Total {mwrr_total:+.2f}%</span>"
             ),
             font=dict(family=FONT, size=14, color=C_TEXT),
