@@ -1008,8 +1008,7 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
     ), row=2, col=1)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=2, col=1)
 
-    _ann_valid = np.isfinite(mwrr_annual) if not isinstance(mwrr_annual, float) or True else False
-    _ann_valid = np.isfinite(float(mwrr_annual))
+    _ann_valid = mwrr_annual is not None and np.isfinite(float(mwrr_annual))
     ann_color  = (C_GREEN if mwrr_annual >= 0 else C_RED) if _ann_valid else C_MUTED
     tot_color  = C_GREEN if mwrr_total >= 0 else C_RED
     _ann_label = f"Annualized {mwrr_annual:+.2f}%" if _ann_valid else "Annualized N/A (< 6 mo)"
