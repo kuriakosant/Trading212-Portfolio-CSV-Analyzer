@@ -401,31 +401,44 @@ def compute_mwrr(df: pd.DataFrame) -> dict:
     days_total  = max((t_end - t0).total_seconds() / 86400.0, 1.0)
     years_total = days_total / 365.0
 
+    # The rest of the dashboard standardizes on 1 USD = 0.86 EUR
+    EUR_TO_USD = 1.0 / 0.86
+
+    def to_usd(amount, ccy):
+        return float(amount) * EUR_TO_USD if str(ccy).strip().upper() == "EUR" else float(amount)
+
     # Build cash-flow list in YEARS (not days) so the solver works in annual space
     cf_years = []
 
     for _, row in deposits.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        cf_years.append((yrs, -abs(float(row.get("Total", 0) or 0))))
+        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        cf_years.append((yrs, -abs(val)))
 
     for _, row in withdrawals.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        cf_years.append((yrs, abs(float(row.get("Total", 0) or 0))))
+        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        cf_years.append((yrs, abs(val)))
 
     for _, row in card_debits.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        cf_years.append((yrs, abs(float(row.get("Total", 0) or 0))))
+        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        cf_years.append((yrs, abs(val)))
 
-    # Compute terminal value
-    total_deposited  = float(deposits["Total"].fillna(0).abs().sum())
-    total_withdrawn  = float(withdrawals["Total"].fillna(0).abs().sum())
-    total_card_spent = float(card_debits["Total"].fillna(0).abs().sum())
+    # Compute terminal value (in USD)
+    total_deposited  = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in deposits.iterrows())
+    total_withdrawn  = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in withdrawals.iterrows())
+    total_card_spent = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in card_debits.iterrows())
     net_deposits     = total_deposited - total_withdrawn - total_card_spent
 
-    sells        = df[df["_category"] == "sell"]
-    realized_pnl = float(sells["Result"].fillna(0).sum())
-    div_total    = float(df[df["_category"] == "dividend"]["Total"].fillna(0).sum())
-    int_total    = float(df[df["_category"] == "interest"]["Total"].fillna(0).sum())
+    sells            = df[df["_category"] == "sell"]
+    realized_pnl     = sum(to_usd(row.get("Result", 0) or 0, row.get("Currency (Result)")) for _, row in sells.iterrows())
+
+    dividends        = df[df["_category"] == "dividend"]
+    div_total        = sum(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR")) for _, row in dividends.iterrows())
+
+    interests        = df[df["_category"] == "interest"]
+    int_total        = sum(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR")) for _, row in interests.iterrows())
 
     terminal = net_deposits + realized_pnl + div_total + int_total
 
@@ -492,6 +505,8 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
     end_date = df["Time"].max().date()
     all_days = pd.date_range(start_date, end_date, freq="D")
 
+    EUR_TO_USD = 1.0 / 0.86
+
     def daily_agg(condition, col="Total", force_abs=False):
         sub = df[condition].copy()
         if sub.empty:
@@ -499,14 +514,22 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
         sub["Date"] = sub["Time"].dt.date
         if force_abs:
             sub[col] = sub[col].abs()
-        return sub.groupby("Date")[col].sum().reindex(all_days.date, fill_value=0)
+        
+        # Apply currency conversion
+        def to_usd(row):
+            ccy = row.get("Currency (Total)", "EUR") if col == "Total" else row.get("Currency (Result)", "USD")
+            val = float(row.get(col, 0) or 0)
+            return val * EUR_TO_USD if str(ccy).strip().upper() == "EUR" else val
+        
+        sub["_val_usd"] = sub.apply(to_usd, axis=1)
+        return sub.groupby("Date")["_val_usd"].sum().reindex(all_days.date, fill_value=0)
 
-    dep = daily_agg(df["_category"] == "deposit", "Total", force_abs=True).cumsum()
-    wdr = daily_agg(df["_category"] == "withdrawal", "Total", force_abs=True).cumsum()
-    crd = daily_agg(df["_category"] == "card_debit", "Total", force_abs=True).cumsum()
-    pnl = daily_agg(df["_category"] == "sell", "Result").cumsum()
-    divs = daily_agg(df["_category"] == "dividend", "Total").cumsum()
-    ints = daily_agg(df["_category"] == "interest", "Total").cumsum()
+    dep = daily_agg(df["_category"] == "deposit", force_abs=True).cumsum()
+    wdr = daily_agg(df["_category"] == "withdrawal", force_abs=True).cumsum()
+    crd = daily_agg(df["_category"] == "card_debit", force_abs=True).cumsum()
+    pnl = daily_agg(df["_category"] == "sell", col="Result").cumsum()
+    divs = daily_agg(df["_category"] == "dividend").cumsum()
+    ints = daily_agg(df["_category"] == "interest").cumsum()
 
     net_dep = dep - wdr - crd
     terminal = net_dep + pnl + divs + ints
