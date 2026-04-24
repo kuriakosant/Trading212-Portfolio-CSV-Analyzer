@@ -11,6 +11,8 @@ import time
 import analyzer
 import charts
 import io
+import portfolio_value as pv
+import charts_portfolio_value as cpv
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -803,7 +805,7 @@ if not prog_df.empty:
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades", "🧾 Fees & Taxes"]
+tab_names = ["📈 P&L Timeline", "📅 Monthly", "🏆 Tickers", "🏢 Companies", "💵 Dividends", "🏦 Interest", "🔄 Trades", "🧾 Fees & Taxes", "📊 Portfolio Value"]
 
 tabs = st.tabs(tab_names)
 
