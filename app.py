@@ -1165,3 +1165,78 @@ with tabs[7]:
         st.markdown(cards_row([
             card("Total Cumulative Fees", fmt_eur(summary.get("total_fees", 0)), "Sum of all non-trading expenses", "🧾", "accent-amber")
         ]), unsafe_allow_html=True)
+
+
+# ── Tab 9 : Live Portfolio Equity (yfinance) ────────────────────────────────
+with tabs[8]:
+    section("📊 True Historical Portfolio Value")
+    st.markdown(
+        "<div style='font-size:0.9rem; color:rgba(226,228,240,0.6); margin-bottom:1.5rem;'>"
+        "Calculates the true total portfolio envelope (Cash + Unrealized Equity) for every past day "
+        "by combining your exact historical stock inventory with historical daily price data from Yahoo Finance.</div>",
+        unsafe_allow_html=True
+    )
+    
+    if not pv.YFINANCE_AVAILABLE:
+        st.error("The `yfinance` library is not installed. Please run `pip install yfinance` to enable this feature.")
+    else:
+        ohlc_daily = pv.build_portfolio_ohlc(df)
+        
+        if ohlc_daily.empty:
+            st.warning("Not enough data to build a portfolio equity curve.")
+        else:
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.markdown("<div style='margin-bottom:0.4rem;'></div>", unsafe_allow_html=True)
+                interval = st.radio(
+                    "Resolution",
+                    options=list(pv.INTERVAL_OPTIONS.keys()),
+                    format_func=lambda x: pv.INTERVAL_OPTIONS[x],
+                    index=1, # 1D
+                    horizontal=False,
+                )
+            with col2:
+                st.markdown("<div style='margin-bottom:0.4rem;'></div>", unsafe_allow_html=True)
+                chart_style = st.radio(
+                    "Chart Style",
+                    options=["Candlestick", "Line"],
+                    index=0,
+                    horizontal=True,
+                )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Resample
+            ohlc_resampled = pv.resample_ohlc(ohlc_daily, interval)
+            
+            # Render main chart
+            fig_port = cpv.chart_portfolio_value(
+                ohlc_resampled,
+                interval=pv.INTERVAL_OPTIONS[interval],
+                chart_type=chart_style,
+                not_found_tickers=getattr(ohlc_daily, "_not_found_tickers", []),
+            )
+            st.plotly_chart(fig_port, use_container_width=True, key="true_port_chart")
+            
+            # Coverage stats
+            not_found = getattr(ohlc_daily, "_not_found_tickers", [])
+            inventory_cols = pv.compute_daily_inventory(df).columns
+            total_tickers = len(inventory_cols) if not inventory_cols.empty else 0
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            cov_col, note_col = st.columns([1, 2])
+            with cov_col:
+                if total_tickers > 0:
+                    fig_cov = cpv.chart_portfolio_coverage(ohlc_daily, not_found, total_tickers)
+                    st.plotly_chart(fig_cov, use_container_width=True, key="true_port_cov")
+            with note_col:
+                st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+                if not_found:
+                    st.warning(
+                        "**Missing Tickers:**\n\n"
+                        "Yahoo Finance could not find historical data for the following tickers: "
+                        f"`{', '.join(not_found)}`.\n\n"
+                        "Their value is excluded from the chart."
+                    )
+                else:
+                    st.success("All historical tickers were successfully priced via Yahoo Finance! 100% Coverage.")
