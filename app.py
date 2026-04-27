@@ -1214,12 +1214,12 @@ with tabs[8]:
                 ohlc_resampled,
                 interval=pv.INTERVAL_OPTIONS[interval],
                 chart_type=chart_style,
-                not_found_tickers=getattr(ohlc_daily, "_not_found_tickers", []),
+                not_found_tickers=ohlc_daily.attrs.get("not_found_tickers", []),
             )
             st.plotly_chart(fig_port, use_container_width=True, key="true_port_chart")
             
             # Coverage stats
-            not_found = getattr(ohlc_daily, "_not_found_tickers", [])
+            not_found = ohlc_daily.attrs.get("not_found_tickers", [])
             inventory_cols = pv.compute_daily_inventory(df).columns
             total_tickers = len(inventory_cols) if not inventory_cols.empty else 0
             

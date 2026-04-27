@@ -90,12 +90,14 @@ def chart_portfolio_value(
             decreasing=dict(line=dict(color=C_RED,   width=1), fillcolor=_C_DOWN_FILL),
             whiskerwidth=0.3,
             name="Portfolio",
+            customdata=ohlc_df[["_open_to_close_usd", "_open_to_close_pct"]].fillna(0),
             hovertemplate=(
-                "<b>%{x}</b><br>"
+                "<b>%{x}</b><br><br>"
                 "Open:  $%{open:,.2f}<br>"
                 "High:  $%{high:,.2f}<br>"
                 "Low:   $%{low:,.2f}<br>"
-                "Close: $%{close:,.2f}<extra></extra>"
+                "Close: $%{close:,.2f}<br><br>"
+                "<b>Interval &Delta;:</b> %{customdata[0]:+,.2f} (%{customdata[1]:+.2f}%)<extra></extra>"
             ),
         ), row=1, col=1)
     else:
@@ -108,7 +110,12 @@ def chart_portfolio_value(
             fill="tozeroy",
             fillcolor=f"rgba({_hex_to_rgb(trend_color)},0.07)",
             name="Portfolio Value",
-            hovertemplate="<b>%{x}</b><br>Value: $%{y:,.2f}<extra></extra>",
+            customdata=ohlc_df[["_open_to_close_usd", "_open_to_close_pct"]].fillna(0),
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Value: $%{y:,.2f}<br><br>"
+                "<b>Interval &Delta;:</b> %{customdata[0]:+,.2f} (%{customdata[1]:+.2f}%)<extra></extra>"
+            ),
         ), row=1, col=1)
 
     # ── Moving average ────────────────────────────────────────────────────────
@@ -122,6 +129,18 @@ def chart_portfolio_value(
             name=f"MA({ma_window})",
             opacity=0.85,
             hovertemplate=f"MA({ma_window}): $%{{y:,.2f}}<extra></extra>",
+        ), row=1, col=1)
+
+    # ── Net Cost Basis ────────────────────────────────────────────────────────
+    net_dep = ohlc_df.get("Net_Deposits")
+    if net_dep is not None:
+        fig.add_trace(go.Scatter(
+            x=x, y=net_dep,
+            mode="lines",
+            line=dict(color=C_BLUE, width=1.4, dash="longdash"),
+            name="Net Cost Basis",
+            opacity=0.6,
+            hovertemplate="Basis: $%{y:,.2f}<extra></extra>",
         ), row=1, col=1)
 
     # ── Zero / baseline reference ─────────────────────────────────────────────
@@ -164,7 +183,7 @@ def chart_portfolio_value(
     # ── Layout ────────────────────────────────────────────────────────────────
     fig.update_layout(
         **{k: v for k, v in BASE_LAYOUT.items()
-           if k not in ("xaxis", "yaxis", "legend")},
+           if k not in ("xaxis", "yaxis", "legend", "margin")},
         height=640,
         margin=dict(l=16, r=30, t=60, b=20),
         title=dict(
@@ -231,7 +250,7 @@ def chart_portfolio_coverage(
     ))
     fig.update_layout(
         **{k: v for k, v in BASE_LAYOUT.items()
-           if k not in ("xaxis", "yaxis", "legend")},
+           if k not in ("xaxis", "yaxis", "legend", "margin")},
         height=200,
         margin=dict(l=10, r=10, t=30, b=10),
         title=dict(

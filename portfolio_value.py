@@ -25,7 +25,7 @@ try:
 except ImportError:
     YFINANCE_AVAILABLE = False
 
-EUR_TO_USD = 1.0 / 0.86   # matches the rest of the dashboard
+EUR_TO_USD_FALLBACK = 1.0 / 0.86   # exactly matches the rest of the dashboard fallback
 
 # ---------------------------------------------------------------------------
 # Ticker normalization: T212/Revolut suffix → Yahoo Finance symbol
@@ -71,62 +71,99 @@ def normalize_ticker(raw: str | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# ---------------------------------------------------------------------------
+# Step 1: FX Rates & Daily realized cash metrics
 # ---------------------------------------------------------------------------
 
-def _to_usd(amount, ccy) -> float:
-    """Convert a value to USD using the fixed 0.86 rate."""
-    try:
-        val = float(amount or 0)
-    except (TypeError, ValueError):
-        val = 0.0
-    return val * EUR_TO_USD if str(ccy).strip().upper() == "EUR" else val
-
-
-# ---------------------------------------------------------------------------
-# Step 1: Daily realized cash balance (vectorized)
-# ---------------------------------------------------------------------------
-
-def compute_daily_cash_series(df: pd.DataFrame) -> pd.Series:
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_historical_fx(start_str: str, end_str: str) -> pd.Series:
     """
-    Return a date-indexed Series of the running cumulative realized cash position (USD).
+    Fetch daily EUR/USD exchange rates to convert EUR cashflows accurately.
+    Returns a date-indexed Series of the EUR/USD multiplier.
+    """
+    if not YFINANCE_AVAILABLE:
+        return pd.Series(dtype=float)
+    try:
+        raw = yf.download("EURUSD=X", start=start_str, end=end_str, progress=False, auto_adjust=True)
+        if raw.empty:
+            return pd.Series(dtype=float)
+        raw.index = pd.to_datetime(raw.index).date
+        
+        # Forward fill weekends
+        all_dates = pd.date_range(start_str, end_str, freq="D").date
+        if isinstance(raw, pd.DataFrame) and "Close" in raw.columns:
+            res = raw["Close"].squeeze()
+        else:
+            res = raw.squeeze()
+            
+        res = res.reindex(all_dates, method="ffill").bfill()
+        return res
+    except Exception:
+        return pd.Series(dtype=float)
 
-    Components:
-      + Deposits        (in → positive)
-      - Withdrawals     (out → negative)
-      - Card debits     (out → negative)
-      + Realized P&L    (sell result → positive/negative)
-      + Dividends       (passive income → positive)
-      + Interest        (passive income → positive)
+
+def compute_daily_metrics(df: pd.DataFrame, fx_series: pd.Series) -> pd.DataFrame:
+    """
+    Return a date-indexed DataFrame with true tracking for:
+      - Cash: Realized uninvested USD account balance.
+      - Net_Deposits: True deployed USD principal (Basis) from bank deposits - withdrawals.
     """
     if df.empty:
-        return pd.Series(dtype=float)
+        return pd.DataFrame({"Cash": pd.Series(dtype=float), "Net_Deposits": pd.Series(dtype=float)})
 
     df = df.copy()
     df["_date"] = df["Time"].dt.date
 
-    def usd_delta(row) -> float:
-        cat = row.get("_category", "other")
-        ccy_t = row.get("Currency (Total)", "EUR")
-        ccy_r = row.get("Currency (Result)", "USD")
-        tot   = abs(float(row.get("Total", 0) or 0))
-        res   = float(row.get("Result", 0) or 0)
-        if cat == "deposit":    return  _to_usd(tot, ccy_t)
-        if cat == "withdrawal": return -_to_usd(tot, ccy_t)
-        if cat == "card_debit": return -_to_usd(tot, ccy_t)
-        if cat == "sell":       return  _to_usd(res, ccy_r)
-        if cat == "dividend":   return  _to_usd(tot, ccy_t)
-        if cat == "interest":   return  _to_usd(tot, ccy_t)
-        return 0.0
+    def get_rate(dt) -> float:
+        if fx_series.empty or dt not in fx_series.index:
+            return EUR_TO_USD_FALLBACK
+        val = fx_series.loc[dt]
+        if isinstance(val, pd.Series):
+            val = val.iloc[0]
+        return float(val)
 
-    df["_cash_delta"] = df.apply(usd_delta, axis=1)
-    daily = df.groupby("_date")["_cash_delta"].sum()
+    def calc_row(row) -> pd.Series:
+        dt  = row["_date"]
+        cat = row.get("_category", "other")
+        ccy = str(row.get("Currency (Total)", "EUR")).strip().upper()
+        tot = abs(float(row.get("Total", 0) or 0))
+        
+        # Only apply FX mapping if transaction was physically in EUR
+        usd_val = tot * get_rate(dt) if ccy == "EUR" else tot
+        
+        cash_delta = 0.0
+        dep_delta  = 0.0
+        
+        if cat == "deposit":
+            cash_delta = usd_val
+            dep_delta  = usd_val
+        elif cat in ("withdrawal", "card_debit"):
+            cash_delta = -usd_val
+            dep_delta  = -usd_val
+        elif cat == "buy":
+            cash_delta = -usd_val
+        elif cat == "sell":
+            cash_delta = usd_val
+        elif cat in ("dividend", "interest", "cashback"):
+            cash_delta = usd_val
+            
+        return pd.Series({"cash_delta": cash_delta, "dep_delta": dep_delta})
+
+    deltas = df.apply(calc_row, axis=1)
+    df["cash_delta"] = deltas["cash_delta"]
+    df["dep_delta"]  = deltas["dep_delta"]
+    
+    daily = df.groupby("_date")[["cash_delta", "dep_delta"]].sum()
 
     start = daily.index.min()
     end   = daily.index.max()
     all_dates = pd.date_range(start, end, freq="D").date
     daily = daily.reindex(all_dates, fill_value=0.0)
-    return daily.cumsum()
+    
+    return pd.DataFrame({
+        "Cash": daily["cash_delta"].cumsum(),
+        "Net_Deposits": daily["dep_delta"].cumsum(),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +301,20 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     if not YFINANCE_AVAILABLE:
         return pd.DataFrame()
 
-    cash_series = compute_daily_cash_series(df)
-    inventory   = compute_daily_inventory(df)
+    inventory = compute_daily_inventory(df)
+
+    all_raw_dates = set(df["Time"].dt.date) | set(inventory.index)
+    if not all_raw_dates:
+        return pd.DataFrame()
+        
+    start_str = str(min(all_raw_dates))
+    end_str   = str(max(all_raw_dates) + timedelta(days=2))
+    
+    fx_series = fetch_historical_fx(start_str, end_str)
+
+    cash_metrics = compute_daily_metrics(df, fx_series)
+    cash_series  = cash_metrics["Cash"]
+    dep_series   = cash_metrics["Net_Deposits"]
 
     if inventory.empty or cash_series.empty:
         return pd.DataFrame()
@@ -273,6 +322,7 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     # Align both series on the same date range
     all_dates = sorted(set(cash_series.index) | set(inventory.index))
     cash_series = cash_series.reindex(all_dates, method="ffill").fillna(0.0)
+    dep_series  = dep_series.reindex(all_dates, method="ffill").fillna(0.0)
     inventory   = inventory.reindex(all_dates, fill_value=0.0).ffill()
 
     tickers = tuple(col for col in inventory.columns if col)
@@ -295,6 +345,7 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
 
     for d in all_dates:
         cash_val = float(cash_series.loc[d])
+        dep_val  = float(dep_series.loc[d])
 
         eq_high = eq_low = eq_close = 0.0
         n_priced = 0
@@ -330,12 +381,13 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
             "Low":              round(port_low,   2),
             "Close":            round(port_close, 2),
             "Cash":             round(cash_val,   2),
+            "Net_Deposits":     round(dep_val,    2),
             "Equity":           round(eq_close,   2),
             "n_tickers_priced": n_priced,
         })
 
     result = pd.DataFrame(rows)
-    result._not_found_tickers = not_found   # surface for UI warning
+    result.attrs["not_found_tickers"] = not_found   # surface for UI warning
     return result
 
 
@@ -382,6 +434,7 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
                 "Low":    row["Low"],
                 "Close":  row["Low"],
                 "Cash":   row["Cash"],
+                "Net_Deposits": row["Net_Deposits"],
                 "Equity": row["Equity"],
                 "n_tickers_priced": row["n_tickers_priced"],
             })
@@ -393,10 +446,16 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
                 "Low":    row["Low"],
                 "Close":  row["Close"],
                 "Cash":   row["Cash"],
+                "Net_Deposits": row["Net_Deposits"],
                 "Equity": row["Equity"],
                 "n_tickers_priced": row["n_tickers_priced"],
             })
-        return pd.DataFrame(rows)
+            
+        res_df = pd.DataFrame(rows)
+        # Calculate row-to-row interval differences
+        res_df["_open_to_close_pct"] = (res_df["Close"] - res_df["Open"]) / res_df["Open"] * 100
+        res_df["_open_to_close_usd"] = (res_df["Close"] - res_df["Open"])
+        return res_df
 
     freq_map = {
         "1D": None,
@@ -407,7 +466,11 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
     }
     freq = freq_map.get(interval)
     if freq is None:
-        return df.reset_index()
+        df = df.reset_index()
+        # Daily row-to-row
+        df["_open_to_close_pct"] = (df["Close"] - df["Open"]) / df["Open"] * 100
+        df["_open_to_close_usd"] = (df["Close"] - df["Open"])
+        return df
 
     agg = df.resample(freq).agg({
         "Open":             "first",
@@ -415,8 +478,14 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
         "Low":              "min",
         "Close":            "last",
         "Cash":             "last",
+        "Net_Deposits":     "last",
         "Equity":           "last",
         "n_tickers_priced": "last",
     }).dropna(subset=["Close"]).reset_index()
     agg["Date"] = agg["Date"].dt.date
+    
+    # Calculate interval diffs on the resampled matrix
+    agg["_open_to_close_pct"] = (agg["Close"] - agg["Open"]) / agg["Open"] * 100
+    agg["_open_to_close_usd"] = (agg["Close"] - agg["Open"])
+    
     return agg
