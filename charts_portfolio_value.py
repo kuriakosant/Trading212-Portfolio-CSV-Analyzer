@@ -38,6 +38,7 @@ def chart_portfolio_value(
     ohlc_df: pd.DataFrame,
     interval: str,
     chart_type: str = "Candlestick",
+    base_currency: str = "USD",
     not_found_tickers: list | None = None,
 ) -> go.Figure:
     """
@@ -140,7 +141,21 @@ def chart_portfolio_value(
             line=dict(color=C_BLUE, width=1.4, dash="longdash"),
             name="Net Cost Basis",
             opacity=0.6,
-            hovertemplate="Basis: $%{y:,.2f}<extra></extra>",
+            hovertemplate="Basis: %{y:,.2f}<extra></extra>",
+        ), row=1, col=1)
+
+    # ── Alternate Currency Portfolio Value ────────────────────────────────────
+    alt_close = ohlc_df.get("Alt_Close")
+    if alt_close is not None:
+        alt_ccy = "EUR" if base_currency == "USD" else "USD"
+        alt_symbol = "€" if alt_ccy == "EUR" else "$"
+        fig.add_trace(go.Scatter(
+            x=x, y=alt_close,
+            mode="lines",
+            line=dict(color=C_MUTED, width=1.2, dash="dot"),
+            name=f"Value ({alt_ccy})",
+            opacity=0.5,
+            hovertemplate=f"{alt_ccy}: {alt_symbol}%{{y:,.2f}}<extra></extra>",
         ), row=1, col=1)
 
     # ── Zero / baseline reference ─────────────────────────────────────────────
@@ -181,6 +196,8 @@ def chart_portfolio_value(
     ), row=2, col=1)
 
     # ── Layout ────────────────────────────────────────────────────────────────
+    currency_symbol = "€" if base_currency == "EUR" else "$"
+    
     fig.update_layout(
         **{k: v for k, v in BASE_LAYOUT.items()
            if k not in ("xaxis", "yaxis", "legend", "margin")},
@@ -191,7 +208,7 @@ def chart_portfolio_value(
                 f"📈 Portfolio Value (Unrealized + Realized)  ·  "
                 f"<span style='color:{trend_color};font-weight:700'>"
                 f"{trend_arrow} {pct_change:+.2f}%</span>"
-                f"  ·  ${last_close:,.0f} current  ·  {interval}"
+                f"  ·  {currency_symbol}{last_close:,.0f} current  ·  {interval}"
             ),
             font=dict(family=FONT, size=14, color=C_TEXT),
             x=0, xanchor="left",
@@ -218,13 +235,13 @@ def chart_portfolio_value(
         gridcolor=C_GRID,
         showline=False,
         tickfont=dict(color=C_MUTED, size=11, family=FONT),
-        tickprefix="$",
+        tickprefix=currency_symbol,
         tickformat=",.0f",
         zeroline=False,
     )
-    fig.update_yaxes(title_text="Portfolio Value (USD)", row=1, col=1,
+    fig.update_yaxes(title_text=f"Portfolio Value ({base_currency})", row=1, col=1,
                      title_font=dict(color=C_MUTED, size=11))
-    fig.update_yaxes(title_text="Holdings (USD)", row=2, col=1,
+    fig.update_yaxes(title_text=f"Holdings ({base_currency})", row=2, col=1,
                      title_font=dict(color=C_MUTED, size=11))
 
     return fig

@@ -19,13 +19,13 @@ from datetime import timedelta
 
 import streamlit as st
 
+from fx_engine import fetch_historical_fx, convert_currency
+
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
 except ImportError:
     YFINANCE_AVAILABLE = False
-
-EUR_TO_USD_FALLBACK = 1.0 / 0.86   # exactly matches the rest of the dashboard fallback
 
 # ---------------------------------------------------------------------------
 # Ticker normalization: T212/Revolut suffix → Yahoo Finance symbol
@@ -75,38 +75,11 @@ def normalize_ticker(raw: str | None) -> str | None:
 # Step 1: FX Rates & Daily realized cash metrics
 # ---------------------------------------------------------------------------
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_historical_fx(start_str: str, end_str: str) -> pd.Series:
-    """
-    Fetch daily EUR/USD exchange rates to convert EUR cashflows accurately.
-    Returns a date-indexed Series of the EUR/USD multiplier.
-    """
-    if not YFINANCE_AVAILABLE:
-        return pd.Series(dtype=float)
-    try:
-        raw = yf.download("EURUSD=X", start=start_str, end=end_str, progress=False, auto_adjust=True)
-        if raw.empty:
-            return pd.Series(dtype=float)
-        raw.index = pd.to_datetime(raw.index).date
-        
-        # Forward fill weekends
-        all_dates = pd.date_range(start_str, end_str, freq="D").date
-        if isinstance(raw, pd.DataFrame) and "Close" in raw.columns:
-            res = raw["Close"].squeeze()
-        else:
-            res = raw.squeeze()
-            
-        res = res.reindex(all_dates, method="ffill").bfill()
-        return res
-    except Exception:
-        return pd.Series(dtype=float)
-
-
-def compute_daily_metrics(df: pd.DataFrame, fx_series: pd.Series) -> pd.DataFrame:
+def compute_daily_metrics(df: pd.DataFrame, fx_series: pd.Series, base_currency: str = "USD") -> pd.DataFrame:
     """
     Return a date-indexed DataFrame with true tracking for:
-      - Cash: Realized uninvested USD account balance.
-      - Net_Deposits: True deployed USD principal (Basis) from bank deposits - withdrawals.
+      - Cash: Realized uninvested account balance (in base_currency).
+      - Net_Deposits: True deployed principal (Basis) from bank deposits - withdrawals (in base_currency).
     """
     if df.empty:
         return pd.DataFrame({"Cash": pd.Series(dtype=float), "Net_Deposits": pd.Series(dtype=float)})
@@ -114,38 +87,30 @@ def compute_daily_metrics(df: pd.DataFrame, fx_series: pd.Series) -> pd.DataFram
     df = df.copy()
     df["_date"] = df["Time"].dt.date
 
-    def get_rate(dt) -> float:
-        if fx_series.empty or dt not in fx_series.index:
-            return EUR_TO_USD_FALLBACK
-        val = fx_series.loc[dt]
-        if isinstance(val, pd.Series):
-            val = val.iloc[0]
-        return float(val)
-
     def calc_row(row) -> pd.Series:
         dt  = row["_date"]
         cat = row.get("_category", "other")
         ccy = str(row.get("Currency (Total)", "EUR")).strip().upper()
         tot = abs(float(row.get("Total", 0) or 0))
         
-        # Only apply FX mapping if transaction was physically in EUR
-        usd_val = tot * get_rate(dt) if ccy == "EUR" else tot
+        # Convert the transaction size perfectly into the Base Currency using that day's rate
+        val_base = convert_currency(tot, ccy, base_currency, dt, fx_series)
         
         cash_delta = 0.0
         dep_delta  = 0.0
         
         if cat == "deposit":
-            cash_delta = usd_val
-            dep_delta  = usd_val
+            cash_delta = val_base
+            dep_delta  = val_base
         elif cat in ("withdrawal", "card_debit"):
-            cash_delta = -usd_val
-            dep_delta  = -usd_val
+            cash_delta = -val_base
+            dep_delta  = -val_base
         elif cat == "buy":
-            cash_delta = -usd_val
+            cash_delta = -val_base
         elif cat == "sell":
-            cash_delta = usd_val
+            cash_delta = val_base
         elif cat in ("dividend", "interest", "cashback"):
-            cash_delta = usd_val
+            cash_delta = val_base
             
         return pd.Series({"cash_delta": cash_delta, "dep_delta": dep_delta})
 
@@ -284,17 +249,13 @@ def fetch_historical_prices(
 # Step 4: Build daily OHLC portfolio value
 # ---------------------------------------------------------------------------
 
-def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
+def build_portfolio_ohlc(df: pd.DataFrame, base_currency: str = "USD") -> pd.DataFrame:
     """
     Build a daily OHLC time-series for total portfolio value (unrealized + realized).
 
     Columns returned:
-      Date, Open, High, Low, Close, Cash, Equity (unrealized USD), n_tickers_priced
-
-    - Open  = previous day's Close (standard OHLC convention)
-    - High  = cash + Σ(shares × daily_high_price per ticker)
-    - Low   = cash + Σ(shares × daily_low_price per ticker)
-    - Close = cash + Σ(shares × daily_close_price per ticker)
+      Date, Open, High, Low, Close, Cash, Net_Deposits, Equity (unrealized), n_tickers_priced,
+      Alt_Close, Alt_Equity
     """
     if df.empty:
         return pd.DataFrame()
@@ -312,7 +273,7 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     
     fx_series = fetch_historical_fx(start_str, end_str)
 
-    cash_metrics = compute_daily_metrics(df, fx_series)
+    cash_metrics = compute_daily_metrics(df, fx_series, base_currency=base_currency)
     cash_series  = cash_metrics["Cash"]
     dep_series   = cash_metrics["Net_Deposits"]
 
@@ -355,16 +316,20 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
             if shares == 0.0 or tk not in prices:
                 continue
 
-            # Nearest available price on or before this date
             avail = price_dates_cache[tk]
             candidates = [x for x in avail if x <= d]
             if not candidates:
                 continue
             prow = prices[tk].loc[candidates[-1]]
 
-            eq_high  += shares * float(prow["High"])
-            eq_low   += shares * float(prow["Low"])
-            eq_close += shares * float(prow["Close"])
+            # YFinance provides stock prices heavily in USD/local. Assuming USD.
+            h = convert_currency(float(prow["High"]),  "USD", base_currency, d, fx_series)
+            l = convert_currency(float(prow["Low"]),   "USD", base_currency, d, fx_series)
+            c = convert_currency(float(prow["Close"]), "USD", base_currency, d, fx_series)
+
+            eq_high  += shares * h
+            eq_low   += shares * l
+            eq_close += shares * c
             n_priced += 1
 
         port_high  = cash_val + eq_high
@@ -373,6 +338,11 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
 
         open_val   = prev_close if prev_close is not None else port_close
         prev_close = port_close
+        
+        # Calculate Alternate Currency (e.g., if base=USD, alt=EUR)
+        alt_ccy = "EUR" if base_currency == "USD" else "USD"
+        alt_port_close = convert_currency(port_close, base_currency, alt_ccy, d, fx_series)
+        alt_eq_close   = convert_currency(eq_close,   base_currency, alt_ccy, d, fx_series)
 
         rows.append({
             "Date":             d,
@@ -383,6 +353,8 @@ def build_portfolio_ohlc(df: pd.DataFrame) -> pd.DataFrame:
             "Cash":             round(cash_val,   2),
             "Net_Deposits":     round(dep_val,    2),
             "Equity":           round(eq_close,   2),
+            "Alt_Close":        round(alt_port_close, 2),
+            "Alt_Equity":       round(alt_eq_close, 2),
             "n_tickers_priced": n_priced,
         })
 
@@ -436,6 +408,8 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
                 "Cash":   row["Cash"],
                 "Net_Deposits": row["Net_Deposits"],
                 "Equity": row["Equity"],
+                "Alt_Close": row["Alt_Close"],
+                "Alt_Equity": row["Alt_Equity"],
                 "n_tickers_priced": row["n_tickers_priced"],
             })
             # PM bar: recover from Low → Close (with High spike)
@@ -448,6 +422,8 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
                 "Cash":   row["Cash"],
                 "Net_Deposits": row["Net_Deposits"],
                 "Equity": row["Equity"],
+                "Alt_Close": row["Alt_Close"],
+                "Alt_Equity": row["Alt_Equity"],
                 "n_tickers_priced": row["n_tickers_priced"],
             })
             
@@ -480,6 +456,8 @@ def resample_ohlc(daily_ohlc: pd.DataFrame, interval: str) -> pd.DataFrame:
         "Cash":             "last",
         "Net_Deposits":     "last",
         "Equity":           "last",
+        "Alt_Close":        "last",
+        "Alt_Equity":       "last",
         "n_tickers_priced": "last",
     }).dropna(subset=["Close"]).reset_index()
     agg["Date"] = agg["Date"].dt.date
