@@ -937,25 +937,36 @@ def company_detailed_stats(df: pd.DataFrame, base_currency: str = 'USD', fx_seri
     return result
 
 
-def company_trade_history(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+def company_trade_history(df: pd.DataFrame, ticker: str, base_currency: str = "USD", fx_series: pd.Series = None) -> pd.DataFrame:
     """
-    Return all buy/sell rows for a specific ticker with running cumulative P&L.
+    Return all buy/sell rows for a specific ticker with running cumulative P&L in base_currency.
     """
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
+        
     trades = df[df["_category"].isin(["buy", "sell"])].copy()
     trades = trades[trades["Ticker"].fillna("") == ticker].sort_values("Time")
     if trades.empty:
         return pd.DataFrame()
 
-    trades["Result_clean"] = trades["Result"].fillna(0)
+    def _to_base(row, val_col, ccy_col):
+        v = float(row.get(val_col, 0) or 0)
+        c = str(row.get(ccy_col, "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
+
+    trades["Result_clean"] = trades.apply(lambda r: _to_base(r, "Result", "Currency (Result)"), axis=1).fillna(0)
+    
     # Cumulative P&L only counts on sell events
     sells_cum = trades["Result_clean"].where(trades["_category"] == "sell", 0).cumsum()
-    trades["Cumul P&L ($)"] = sells_cum.values
+    sym = "€" if base_currency == "EUR" else "$"
+    
+    trades[f"Cumul P&L ({sym})"] = sells_cum.values
 
     cols = ["Time", "Action", "No. of shares", "Price / share",
-            "Currency (Price / share)", "Result_clean", "Total", "Cumul P&L ($)"]
+            "Currency (Price / share)", "Result_clean", "Total", f"Cumul P&L ({sym})"]
     available = [c for c in cols if c in trades.columns]
     out = trades[available].copy()
-    out = out.rename(columns={"Result_clean": "Trade P&L ($)"})
+    out = out.rename(columns={"Result_clean": f"Trade P&L ({sym})"})
     return out.reset_index(drop=True)
 
 

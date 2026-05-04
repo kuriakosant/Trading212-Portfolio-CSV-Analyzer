@@ -833,7 +833,7 @@ with tabs[0]:
     freq_code  = analyzer.FREQ_MAP[freq_label]
     timeline   = analyzer.pnl_timeline(df, freq_code)
 
-    st.plotly_chart(charts.chart_pnl_timeline(timeline, freq_label), use_container_width=True, key="pnl_timeline")
+    st.plotly_chart(charts.chart_pnl_timeline(timeline, freq_label, base_currency), use_container_width=True, key="pnl_timeline")
 
     # Quick stats below chart
     if not timeline.empty:
@@ -861,6 +861,7 @@ with tabs[0]:
                 return_df,
                 mwrr_annual if mwrr_annual is not None else float("nan"),
                 mwrr_total,
+                base_currency=base_currency
             ),
             use_container_width=True, key="return_timeline",
         )
@@ -870,9 +871,9 @@ with tabs[0]:
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.plotly_chart(charts.chart_income_pie(summary), use_container_width=True, key="income_pie")
+        st.plotly_chart(charts.chart_income_pie(summary, base_currency), use_container_width=True, key="income_pie")
     with col_b:
-        st.plotly_chart(charts.chart_deposits_vs_pnl(df), use_container_width=True, key="deposits_vs_pnl")
+        st.plotly_chart(charts.chart_deposits_vs_pnl(df, base_currency, fx_series), use_container_width=True, key="deposits_vs_pnl")
 
 
 # ── Tab 2 : Monthly summary ──────────────────────────────────────────────────
@@ -944,12 +945,12 @@ with tabs[3]:
         # ── Overview charts row ────────────────────────────────
         st.plotly_chart(charts.chart_company_pnl_bars(company_df, base_currency), use_container_width=True, key="company_pnl_bars")
 
-        st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True, key="company_bubble")
+        st.plotly_chart(charts.chart_company_bubble(company_df, base_currency), use_container_width=True, key="company_bubble")
 
         # ── Return Contribution chart ──────────────────────────
         section("🧩 Return Contribution (% of Portfolio MWRR)")
         st.plotly_chart(
-            charts.chart_return_contribution(company_df, mwrr_total),
+            charts.chart_return_contribution(company_df, mwrr_total, base_currency),
             use_container_width=True, key="return_contribution",
         )
 
@@ -965,7 +966,7 @@ with tabs[3]:
             placeholder="Choose tickers…",
         )
         if compare_sel:
-            st.plotly_chart(charts.chart_company_compare(df, compare_sel), use_container_width=True, key="company_compare")
+            st.plotly_chart(charts.chart_company_compare(df, compare_sel, base_currency, fx_series), use_container_width=True, key="company_compare")
 
         # ── Drill-down: single company ─────────────────────────
         section("🔍 Company Drill-Down")
@@ -1008,7 +1009,7 @@ with tabs[3]:
             ]), unsafe_allow_html=True)
 
             history = analyzer.company_trade_history(df, drill_ticker)
-            st.plotly_chart(charts.chart_company_timeline(history, drill_ticker),
+            st.plotly_chart(charts.chart_company_timeline(history, drill_ticker, base_currency),
                             use_container_width=True, key="company_timeline")
 
             # Individual trade log
@@ -1016,10 +1017,10 @@ with tabs[3]:
             if not history.empty:
                 disp = history.copy()
                 disp["Time"] = disp["Time"].dt.strftime("%b %d, %Y %H:%M")
-                disp["Trade P&L ($)"] = disp["Trade P&L ($)"].apply(
-                    lambda v: f"${v:+,.2f}" if v != 0 else "—")
-                disp["Cumul P&L ($)"] = disp["Cumul P&L ($)"].apply(
-                    lambda v: f"${v:+,.2f}")
+                disp[f"Trade P&L ({sym})"] = disp[f"Trade P&L ({sym})"].apply(
+                    lambda v: f"{sym}{v:+,.2f}" if v != 0 else "—")
+                disp[f"Cumul P&L ({sym})"] = disp[f"Cumul P&L ({sym})"].apply(
+                    lambda v: f"{sym}{v:+,.2f}")
                 st.dataframe(disp, use_container_width=True, hide_index=True)
                 csv_co = history.to_csv(index=False).encode()
                 st.download_button(f"⬇️ Export {drill_ticker} trade log", csv_co,
@@ -1029,8 +1030,8 @@ with tabs[3]:
         section("📋 Full Company Stats Table")
         sort_col = st.selectbox(
             "Sort by",
-            ["Net P&L ($)", "Total Trades", "Gross Profit ($)", "Win Rate (%)",
-             "Vol Bought ($)", "Best Trade ($)"],
+            [f"Net P&L ({sym})", "Total Trades", f"Gross Profit ({sym})", "Win Rate (%)",
+             f"Volume Bought ({sym})", f"Best Trade ({sym})"],
             label_visibility="collapsed",
         )
         sort_asc = st.checkbox("Ascending", value=False)

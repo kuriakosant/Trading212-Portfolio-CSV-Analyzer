@@ -94,12 +94,14 @@ def _empty(msg: str) -> go.Figure:
 # 1. P&L Timeline  (resampled — Daily / Weekly / Monthly / Quarterly)
 # ---------------------------------------------------------------------------
 
-def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily") -> go.Figure:
+def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily", base_currency: str = "USD") -> go.Figure:
     """
     Interactive area + bar combo chart.
     Top: Cumulative P&L area. Bottom: Period P&L bars.
     Hover shows: date, period P&L, cumulative P&L, win rate.
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if timeline_df.empty:
         return _empty("No sell transactions in selected period")
 
@@ -180,9 +182,9 @@ def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily") -> 
     )
     fig.update_xaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
     fig.update_yaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
-    fig.update_yaxes(title_text="Cumulative P&L ($)", row=1, col=1,
+    fig.update_yaxes(title_text=f"Cumulative P&L ({sym})", row=1, col=1,
                      title_font=dict(color=C_MUTED, size=11))
-    fig.update_yaxes(title_text="Period P&L ($)", row=2, col=1,
+    fig.update_yaxes(title_text=f"Period P&L ({sym})", row=2, col=1,
                      title_font=dict(color=C_MUTED, size=11))
 
     return fig
@@ -198,6 +200,8 @@ def chart_dividend_growth(div_series: pd.DataFrame, base_currency: str = "USD") 
     Top: Cumulative dividend total (step line).
     Individual bars colored by ticker.
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if div_series.empty:
         return _empty("No dividend payments in selected period")
 
@@ -282,6 +286,8 @@ def chart_interest_growth(int_series: pd.DataFrame, base_currency: str = "USD") 
     Separate cumulative step lines for EUR and USD interest income.
     Each payment shown as a marker.
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if int_series.empty:
         return _empty("No interest payments in selected period")
 
@@ -317,6 +323,8 @@ def chart_interest_growth(int_series: pd.DataFrame, base_currency: str = "USD") 
 # ---------------------------------------------------------------------------
 
 def chart_monthly_summary(monthly_df: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
+    
+    sym = "€" if base_currency == "EUR" else "$"
     if monthly_df.empty:
         return _empty("No data in selected period")
 
@@ -325,19 +333,19 @@ def chart_monthly_summary(monthly_df: pd.DataFrame, base_currency: str = "USD") 
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Profit"],
         name="Profit", marker_color=C_GREEN, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Profit: <b>$%{y:,.2f}</b><extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Profit: <b>%{customdata[0]}{y:,.2f}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Loss"],
         name="Loss", marker_color=C_RED, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Loss: <b>$%{y:,.2f}</b><extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Loss: <b>%{customdata[0]}{y:,.2f}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Net P&L"],
         name="Net P&L",
         marker_color=[C_GREEN if v >= 0 else C_RED for v in monthly_df["Net P&L"]],
         marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Net P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{x}</b><br>Net P&L: <b>{sym}%{y:+,.2f}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df[f"Dividends ({base_currency})"],
@@ -359,6 +367,8 @@ def chart_monthly_summary(monthly_df: pd.DataFrame, base_currency: str = "USD") 
 # ---------------------------------------------------------------------------
 
 def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15, base_currency: str = "USD") -> go.Figure:
+    
+    sym = "€" if base_currency == "EUR" else "$"
     if ticker_df.empty:
         return _empty("No sell transactions in selected period")
 
@@ -390,7 +400,7 @@ def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15, base_currency: s
     ))
 
     _add_zero_line(fig, axis="x")
-    fig.update_xaxes(title_text="Net P&L ($)")
+    fig.update_xaxes(title_text=f"Net P&L ({sym})")
     return fig
 
 
@@ -398,24 +408,25 @@ def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15, base_currency: s
 # 6. Income sources pie / donut
 # ---------------------------------------------------------------------------
 
-def chart_income_pie(summary: dict) -> go.Figure:
+def chart_income_pie(summary: dict, base_currency: str = "USD") -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     COLORS = {
-        "Trade Profit ($)": C_GREEN,
+        f"Trade Profit ({sym})": C_GREEN,
         "Dividends (€)":    C_PURPLE,
         "Interest (€)":     C_TEAL,
-        "Interest ($)":     C_AMBER,
+        f"Interest ({sym})":     C_AMBER,
         "Cashback (€)":     C_BLUE,
     }
 
     items = []
     if summary.get("gross_profit", 0) > 0:
-        items.append(("Trade Profit ($)", summary["gross_profit"], 0.05))
+        items.append((f"Trade Profit ({sym})", summary["gross_profit"], 0.05))
     if summary.get("div_net_eur", 0) > 0:
         items.append(("Dividends (€)", summary["div_net_eur"], 0.0))
     if summary.get("interest_eur", 0) > 0:
         items.append(("Interest (€)", summary["interest_eur"], 0.0))
     if summary.get("interest_usd", 0) > 0:
-        items.append(("Interest ($)", summary["interest_usd"], 0.0))
+        items.append((f"Interest ({sym})", summary["interest_usd"], 0.0))
     if summary.get("cashback_eur", 0) > 0:
         items.append(("Cashback (€)", summary["cashback_eur"], 0.0))
 
@@ -502,7 +513,8 @@ def chart_income_pie(summary: dict) -> go.Figure:
 # 7. Deposits vs cumulative P&L
 # ---------------------------------------------------------------------------
 
-def chart_deposits_vs_pnl(df: pd.DataFrame) -> go.Figure:
+def chart_deposits_vs_pnl(df: pd.DataFrame, base_currency: str = "USD", fx_series=None) -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     if df.empty:
         return _empty("No data")
 
@@ -527,9 +539,9 @@ def chart_deposits_vs_pnl(df: pd.DataFrame) -> go.Figure:
     ))
     fig.add_trace(go.Scatter(
         x=pnl.index.astype(str), y=pnl.values,
-        mode="lines", name="Trade P&L ($)",
+        mode="lines", name=f"Trade P&L ({sym})",
         line=dict(color=C_BLUE, width=2, shape="spline", dash="dot"),
-        hovertemplate="<b>%{x}</b><br>Trade P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{x}</b><br>Trade P&L: <b>{sym}%{y:+,.2f}</b><extra></extra>",
     ))
 
     return fig
@@ -545,6 +557,8 @@ def chart_company_pnl_bars(company_df: pd.DataFrame, base_currency: str = "USD")
     Color: green if positive, red if negative.
     Hover: full stats.
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if company_df.empty:
         return _empty("No trade data in selected period")
 
@@ -606,6 +620,8 @@ def chart_company_bubble(company_df: pd.DataFrame, base_currency: str = "USD") -
       Size = Vol Bought (Base)
       Color = Win Rate (%)
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if company_df.empty:
         return _empty("No trade data in selected period")
 
@@ -663,7 +679,7 @@ def chart_company_bubble(company_df: pd.DataFrame, base_currency: str = "USD") -
 
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
     fig.update_xaxes(title_text="Total Trades (buys + sells)")
-    fig.update_yaxes(title_text="Net P&L ($)")
+    fig.update_yaxes(title_text=f"Net P&L ({sym})")
     return fig
 
 
@@ -671,12 +687,14 @@ def chart_company_bubble(company_df: pd.DataFrame, base_currency: str = "USD") -
 # 10. Single company cumulative trade P&L timeline
 # ---------------------------------------------------------------------------
 
-def chart_company_timeline(history_df: pd.DataFrame, ticker: str) -> go.Figure:
+def chart_company_timeline(history_df: pd.DataFrame, ticker: str, base_currency: str = "USD") -> go.Figure:
     """
     Scatter + step line showing every trade for one company.
     Sells: colored green/red by P&L.  Buys: small grey dots.
-    Step line shows running cumulative P&L from sells.
+    Step line shows running cumulative P&L from sells in base_currency.
     """
+    sym = "€" if base_currency == "EUR" else "$"
+
     if history_df.empty:
         return _empty(f"No trade history for {ticker}")
 
@@ -687,21 +705,23 @@ def chart_company_timeline(history_df: pd.DataFrame, ticker: str) -> go.Figure:
     sells = history_df[history_df["Action"].str.lower().str.startswith("market sell") |
                         history_df["Action"].str.lower().str.startswith("limit sell")]
 
+    sym = "€" if base_currency == "EUR" else "$"
+    
     # Cumulative P&L step line
     fig.add_trace(go.Scatter(
         x=history_df["Time"],
-        y=history_df["Cumul P&L ($)"],
+        y=history_df[f"Cumul P&L ({sym})"],
         mode="lines",
         name="Cumul P&L",
         line=dict(color=C_BLUE, width=2, shape="hv", dash="dot"),
-        hovertemplate="<b>%{x|%b %d, %Y %H:%M}</b><br>Running P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x|%b %d, %Y %H:%M}}</b><br>Running P&L: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
     ))
 
     # Buy markers
     if not buys.empty:
         fig.add_trace(go.Scatter(
             x=buys["Time"],
-            y=buys["Cumul P&L ($)"],
+            y=buys[f"Cumul P&L ({sym})"],
             mode="markers",
             name="Buy",
             marker=dict(size=8, color=C_MUTED, symbol="triangle-up",
@@ -709,32 +729,32 @@ def chart_company_timeline(history_df: pd.DataFrame, ticker: str) -> go.Figure:
             customdata=buys[["No. of shares", "Price / share", "Total"]].values,
             hovertemplate=(
                 "<b>BUY</b> — %{x|%b %d, %Y %H:%M}<br>"
-                "Shares: %{customdata[0]:.4f}  @  $%{customdata[1]:.2f}<br>"
-                "Total:  $%{customdata[2]:,.2f}<extra></extra>"
+                f"Shares: %{{customdata[0]:.4f}}  @  {sym}%{{customdata[1]:.2f}}<br>"
+                f"Total:  {sym}%{{customdata[2]:,.2f}}<extra></extra>"
             ),
         ))
 
     # Sell markers — colored by P&L
     if not sells.empty:
-        sell_colors = [C_GREEN if v >= 0 else C_RED for v in sells["Trade P&L ($)"]]
+        sell_colors = [C_GREEN if v >= 0 else C_RED for v in sells[f"Trade P&L ({sym})"]]
         fig.add_trace(go.Scatter(
             x=sells["Time"],
-            y=sells["Cumul P&L ($)"],
+            y=sells[f"Cumul P&L ({sym})"],
             mode="markers",
             name="Sell",
             marker=dict(size=10, color=sell_colors, symbol="triangle-down",
                         line=dict(color=C_BG, width=1.5)),
-            customdata=sells[["No. of shares", "Price / share", "Trade P&L ($)", "Total"]].values,
+            customdata=sells[["No. of shares", "Price / share", f"Trade P&L ({sym})", "Total"]].values,
             hovertemplate=(
                 "<b>SELL</b> — %{x|%b %d, %Y %H:%M}<br>"
-                "Shares: %{customdata[0]:.4f}  @  $%{customdata[1]:.2f}<br>"
-                "Trade P&L : <b>$%{customdata[2]:+,.2f}</b><br>"
-                "Total     : $%{customdata[3]:,.2f}<extra></extra>"
+                f"Shares: %{{customdata[0]:.4f}}  @  {sym}%{{customdata[1]:.2f}}<br>"
+                f"Trade P&L : <b>{sym}%{{customdata[2]:+,.2f}}</b><br>"
+                f"Total     : {sym}%{{customdata[3]:,.2f}}<extra></extra>"
             ),
         ))
 
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
-    fig.update_yaxes(title_text="Cumulative P&L ($)")
+    fig.update_yaxes(title_text=f"Cumulative P&L ({sym})")
     return fig
 
 
@@ -742,7 +762,8 @@ def chart_company_timeline(history_df: pd.DataFrame, ticker: str) -> go.Figure:
 # 11. Multi-company comparison — overlaid cumulative P&L lines
 # ---------------------------------------------------------------------------
 
-def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
+def chart_company_compare(df: pd.DataFrame, tickers: list, base_currency: str = "USD", fx_series=None) -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     """
     Overlaid cumulative P&L lines for multiple selected tickers.
     Each ticker gets a distinct color from the palette.
@@ -774,7 +795,7 @@ def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
         ))
 
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
-    fig.update_yaxes(title_text="Cumulative P&L ($)")
+    fig.update_yaxes(title_text=f"Cumulative P&L ({sym})")
     fig.update_xaxes(title_text="Date")
     return fig
 
@@ -786,7 +807,8 @@ def chart_company_compare(df: pd.DataFrame, tickers: list) -> go.Figure:
 def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl: bool = True,
                           show_div: bool = True, show_int: bool = True,
                           chart_mode: str = "Line (Stacked Area)",
-                          return_df: pd.DataFrame = None) -> go.Figure:
+                          return_df: pd.DataFrame = None, base_currency: str = "USD") -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     """
     Stacked/Overlaid area chart showing the growth of net deposits and P&L.
     Optionally overlays the cumulative Return % curve on a secondary Y-axis.
@@ -837,7 +859,7 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
         if not has_return:
             fig.update_layout(xaxis_rangeslider_visible=False, hovermode="x unified",
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig.update_yaxes(title_text="Tracked Value ($)", **kwargs)
+        fig.update_yaxes(title_text=f"Tracked Value ({sym})", **kwargs)
     else:
         if show_dep:
             fig.add_trace(go.Scatter(
@@ -846,7 +868,7 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
                 line=dict(color=C_BLUE, width=0),
                 fill="tozeroy", fillcolor="rgba(56,189,248,0.3)",
                 stackgroup="one",
-                hovertemplate="<b>%{x}</b><br>Net Deposits: <b>$%{y:,.2f}</b><extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>Net Deposits: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
             ), **kwargs)
 
         if show_pnl:
@@ -856,7 +878,7 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
                 line=dict(color=C_GREEN, width=0),
                 fill="tonexty", fillcolor="rgba(34,197,94,0.4)",
                 stackgroup="one",
-                hovertemplate="<b>%{x}</b><br>Cumul P&L: <b>$%{y:+,.2f}</b><extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>Cumul P&L: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
             ), **kwargs)
 
         if show_div:
@@ -866,7 +888,7 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
                 line=dict(color=C_PURPLE, width=0),
                 fill="tonexty", fillcolor="rgba(167,139,250,0.5)",
                 stackgroup="one",
-                hovertemplate="<b>%{x}</b><br>Dividends: <b>$%{y:,.2f}</b><extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>Dividends: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
             ), **kwargs)
 
         if show_int:
@@ -876,20 +898,20 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
                 line=dict(color=C_AMBER, width=0),
                 fill="tonexty", fillcolor="rgba(251,191,36,0.6)",
                 stackgroup="one",
-                hovertemplate="<b>%{x}</b><br>Interest: <b>$%{y:,.2f}</b><extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>Interest: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
             ), **kwargs)
 
         fig.add_trace(go.Scatter(
             x=prog_df["Date"].astype(str), y=total_line,
             mode="lines", name="Tracked Summary",
             line=dict(color=C_TEXT, width=2, shape="spline"),
-            hovertemplate="<b>%{x}</b><br>Tracked Summary: <b>$%{y:,.2f}</b><extra></extra>",
+            hovertemplate=f"<b>%{{x}}</b><br>Tracked Summary: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
         ), **kwargs)
 
         if not has_return:
             fig.update_layout(hovermode="x unified",
                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig.update_yaxes(title_text="Tracked Value ($)", **kwargs)
+        fig.update_yaxes(title_text=f"Tracked Value ({sym})", **kwargs)
 
     # ── Overlay: MWRR Return % on secondary Y-axis ──
     if has_return and "Return %" in return_df.columns:
@@ -953,9 +975,9 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
         fill="tozeroy",
         fillcolor=fill_color,
         customdata=np.column_stack([
-            return_df["Terminal Value ($)"].values,
-            return_df["Cumul Deposits ($)"].values,
-            return_df["Total Gains ($)"].values,
+            return_df[f"Terminal Value ({sym})"].values,
+            return_df[f"Cumul Deposits ({sym})"].values,
+            return_df[f"Total Gains ({sym})"].values,
         ]),
         hovertemplate=(
             "<b>%{x}</b><br>"
@@ -983,14 +1005,14 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
     )
 
     # ── Bottom: Daily delta in total gains (bar) ──
-    daily_delta = return_df["Total Gains ($)"].diff().fillna(0)
+    daily_delta = return_df[f"Total Gains ({sym})"].diff().fillna(0)
     bar_cols = [C_GREEN if v >= 0 else C_RED for v in daily_delta]
     fig.add_trace(go.Bar(
         x=x, y=daily_delta,
-        name="Daily Gains Δ ($)",
+        name=f"Daily Gains Δ ({sym})",
         marker_color=bar_cols,
         marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Daily Δ: <b>$%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{x}</b><br>Daily Δ: <b>{sym}%{y:+,.2f}</b><extra></extra>",
     ), row=2, col=1)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=2, col=1)
 
@@ -1017,7 +1039,7 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
     fig.update_yaxes(gridcolor=C_GRID, showline=False, tickfont=dict(color=C_MUTED, size=11))
     fig.update_yaxes(title_text="Return %", ticksuffix="%", row=1, col=1,
                      title_font=dict(color=C_MUTED, size=11))
-    fig.update_yaxes(title_text="Daily Gains Δ ($)", row=2, col=1,
+    fig.update_yaxes(title_text=f"Daily Gains Δ ({sym})", row=2, col=1,
                      title_font=dict(color=C_MUTED, size=11))
 
     return fig
@@ -1027,7 +1049,8 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
 # 14. Return Contribution waterfall / bar chart
 # ---------------------------------------------------------------------------
 
-def chart_return_contribution(company_df: pd.DataFrame, mwrr_total: float = 0.0) -> go.Figure:
+def chart_return_contribution(company_df: pd.DataFrame, mwrr_total: float = 0.0, base_currency: str = "USD") -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     """
     Horizontal bar chart showing each ticker's % contribution to total portfolio return.
     Positive = drove the return up; Negative = dragged the return down.
@@ -1053,7 +1076,7 @@ def chart_return_contribution(company_df: pd.DataFrame, mwrr_total: float = 0.0)
         orientation="h",
         marker_color=colors,
         marker_line_width=0,
-        customdata=df[["Net P&L ($)", "Win Rate (%)", "Vol Bought ($)"]].values,
+        customdata=df[[f"Net P&L ({sym})", "Win Rate (%)", f"Volume Bought ({sym})"]].values,
         text=[f"{v:+.1f}%" for v in df["Return Contribution (%)"]],
         textposition="outside",
         cliponaxis=False,
