@@ -126,7 +126,7 @@ def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily") -> 
         "<extra></extra>"
     )
 
-    # Deprecated second trace\n    # fig.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=x, y=cum,
         mode="lines",
         name="Cumulative P&L",
