@@ -13,6 +13,7 @@ import charts
 import io
 import portfolio_value as pv
 import charts_portfolio_value as cpv
+from fx_engine import fetch_historical_fx
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -386,14 +387,18 @@ def cards_row(html_list: list) -> str:
 
 
 def fmt_usd(v: float, sign: bool = True) -> str:
+    base = st.session_state.get("base_currency", "USD")
+    sym = "€" if base == "EUR" else "$"
     if sign:
         s = "+" if v >= 0 else "−"
-        return f"{s}${abs(v):,.2f}"
-    return f"${v:,.2f}"
+        return f"{s}{sym}{abs(v):,.2f}"
+    return f"{sym}{v:,.2f}"
 
 
 def fmt_eur(v: float, decimals: int = 2) -> str:
-    return f"€{v:,.{decimals}f}"
+    base = st.session_state.get("base_currency", "USD")
+    sym = "€" if base == "EUR" else "$"
+    return f"{sym}{v:,.{decimals}f}"
 
 
 def section(label: str) -> None:
@@ -567,6 +572,11 @@ with st.sidebar:
     if start_date > end_date:
         st.error("Start must be before end date.")
         st.stop()
+        
+    st.divider()
+    st.markdown("<div style='font-size:0.72rem;font-weight:700;color:rgba(226,228,240,0.35);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.6rem;'>Display Currency</div>", unsafe_allow_html=True)
+    base_currency = st.radio("Display Currency", ["USD", "EUR"], index=0, horizontal=True, label_visibility="collapsed")
+    st.session_state.base_currency = base_currency
 
 df = analyzer.filter_by_date(df_all, start_date, end_date)
 
@@ -640,13 +650,15 @@ if page_selection == "💳 Card Spending Analysis":
     st.stop()
 
 
-# Pre-compute everything
-summary     = analyzer.compute_summary(df)
-monthly_df  = analyzer.monthly_summary(df)
-ticker_df   = analyzer.ticker_pnl(df)
-div_series  = analyzer.dividend_series(df)
-int_series  = analyzer.interest_series(df)
-return_df   = analyzer.mwrr_cumulative_timeline(df)
+# Pre-compute everything (Globally converted to base_currency)
+fx_series   = fetch_historical_fx(str(min_date), str(max_date + timedelta(days=2)))
+
+summary     = analyzer.compute_summary(df, base_currency, fx_series)
+monthly_df  = analyzer.monthly_summary(df, base_currency, fx_series)
+ticker_df   = analyzer.ticker_pnl(df, base_currency, fx_series)
+div_series  = analyzer.dividend_series(df, base_currency, fx_series)
+int_series  = analyzer.interest_series(df, base_currency, fx_series)
+return_df   = analyzer.mwrr_cumulative_timeline(df, base_currency, fx_series)
 
 # Date badge
 days_in_range = (end_date - start_date).days + 1
@@ -662,7 +674,7 @@ st.markdown(
 )
 
 # Populate Summary Export in the sidebar
-excel_bytes = analyzer.export_portfolio_excel(df, summary, start_date, end_date)
+excel_bytes = analyzer.export_portfolio_excel(df, summary, start_date, end_date, base_currency, fx_series)
 export_placeholder.download_button(
     "📥 Download Excel Report", 
     data=excel_bytes,
@@ -710,14 +722,12 @@ st.markdown(cards_row([
 # Net Total Yield Header
 # ---------------------------------------------------------------------------
 
-eur_components = summary["div_net_eur"] + summary["interest_eur"] + summary["cashback_eur"]
-usd_components = summary.get("interest_usd", 0) + summary["net_pnl"]
-net_total_yield_usd = usd_components + (eur_components / 0.86) # Fixed $1 = €0.86 rate
+net_total_yield = summary["div_net_eur"] + summary["interest_eur"] + summary["cashback_eur"] + summary.get("interest_usd", 0) + summary["net_pnl"]
 
-yield_accent = "accent-green" if net_total_yield_usd >= 0 else "accent-red"
+yield_accent = "accent-green" if net_total_yield >= 0 else "accent-red"
 st.markdown(cards_row([
-    card("NET TOTAL YIELD (USD)", f"${net_total_yield_usd:+,.2f}",
-         "Total Account Profit (Trades + Interest + Dividends + Cashback). Rate: 0.86 EUR = 1 USD", "🌍", f"{yield_accent} accent-glow-pulse")
+    card(f"NET TOTAL YIELD ({base_currency})", fmt_usd(net_total_yield),
+         "Total Account Profit (Trades + Interest + Dividends + Cashback) in Base Currency", "🌍", f"{yield_accent} accent-glow-pulse")
 ]), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
@@ -736,10 +746,10 @@ st.markdown(cards_row([
     card("Total Return (MWRR)", f"{mwrr_total:+.2f}%",
          f"Over {days_inv} days total invested", "\U0001f4c8" if mwrr_total >= 0 else "\U0001f4c9",
          "accent-green" if mwrr_total >= 0 else "accent-red"),
-    card("Terminal Value", f"${terminal_v:,.2f}",
+    card("Terminal Value", fmt_usd(terminal_v, sign=False),
          "Net deposits + realized P&L + dividends + interest", "\U0001f3e6", "accent-blue",
          tooltip="The reconstructed current portfolio value from all realized activity. Does not include unrealized gains on open positions."),
-    card("Capital Deployed", f"${total_inv:,.2f}",
+    card("Capital Deployed", fmt_usd(total_inv, sign=False),
          f"Total gross deposits ({summary['n_deposits']} deposits)", "\U0001f4b0", "accent-amber"),
 ]), unsafe_allow_html=True)
 
@@ -832,16 +842,16 @@ with tabs[0]:
         worst = timeline.loc[timeline["Period P&L"].idxmin()]
         with col1:
             period_label = best["Period"].strftime("%b %d") if hasattr(best["Period"], "strftime") else str(best["Period"])
-            st.metric("Best Period", f"+${best['Period P&L']:,.2f}", period_label)
+            st.metric("Best Period", fmt_usd(best['Period P&L']), period_label)
         with col2:
             period_label2 = worst["Period"].strftime("%b %d") if hasattr(worst["Period"], "strftime") else str(worst["Period"])
-            st.metric("Worst Period", f"-${abs(worst['Period P&L']):,.2f}", period_label2)
+            st.metric("Worst Period", fmt_usd(worst['Period P&L']), period_label2)
         with col3:
             active = int((timeline["Trades"] > 0).sum())
             st.metric("Active Periods", active, f"of {len(timeline)} total")
         with col4:
             avg = timeline[timeline["Trades"] > 0]["Period P&L"].mean()
-            st.metric("Avg P&L / Period", f"${avg:+,.2f}", "active periods only")
+            st.metric("Avg P&L / Period", fmt_usd(avg), "active periods only")
 
     # -- MWRR Return % Dedicated Chart --
     section("📊 Portfolio Return % (MWRR)")
@@ -867,21 +877,21 @@ with tabs[0]:
 
 # ── Tab 2 : Monthly summary ──────────────────────────────────────────────────
 with tabs[1]:
-    st.plotly_chart(charts.chart_monthly_summary(monthly_df), use_container_width=True, key="monthly_summary")
+    st.plotly_chart(charts.chart_monthly_summary(monthly_df, base_currency), use_container_width=True, key="monthly_summary")
 
     if not monthly_df.empty:
         section("Month-by-Month Details")
         display = monthly_df.copy()
         for col in ["Profit", "Loss", "Net P&L"]:
-            display[col] = display[col].apply(lambda v: f"${v:+,.2f}")
-        display["Dividends (EUR)"] = display["Dividends (EUR)"].apply(lambda v: f"€{v:.4f}")
-        display["Interest"] = display["Interest"].apply(lambda v: f"{v:.4f}")
+            display[col] = display[col].apply(lambda v: fmt_usd(v))
+        display[f"Dividends ({base_currency})"] = display[f"Dividends ({base_currency})"].apply(lambda v: fmt_usd(v, False))
+        display["Interest"] = display["Interest"].apply(lambda v: fmt_usd(v, False))
         st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 # ── Tab 3 : Tickers ──────────────────────────────────────────────────────────
 with tabs[2]:
-    st.plotly_chart(charts.chart_top_tickers(ticker_df), use_container_width=True, key="top_tickers")
+    st.plotly_chart(charts.chart_top_tickers(ticker_df, 15, base_currency), use_container_width=True, key="top_tickers")
 
     if not ticker_df.empty:
         section("Full Ticker P&L Breakdown")
@@ -932,7 +942,7 @@ with tabs[3]:
         ]), unsafe_allow_html=True)
 
         # ── Overview charts row ────────────────────────────────
-        st.plotly_chart(charts.chart_company_pnl_bars(company_df), use_container_width=True, key="company_pnl_bars")
+        st.plotly_chart(charts.chart_company_pnl_bars(company_df, base_currency), use_container_width=True, key="company_pnl_bars")
 
         st.plotly_chart(charts.chart_company_bubble(company_df), use_container_width=True, key="company_bubble")
 
@@ -1054,7 +1064,7 @@ with tabs[4]:
                  "🏛️", "accent-red"),
         ]), unsafe_allow_html=True)
 
-        st.plotly_chart(charts.chart_dividend_growth(div_series), use_container_width=True, key="dividend_growth")
+        st.plotly_chart(charts.chart_dividend_growth(div_series, base_currency), use_container_width=True, key="dividend_growth")
 
         # Revolut-only: surface dividend-tax corrections separately when present.
         dtc_total = summary.get("div_tax_correction_total", 0.0)
@@ -1097,7 +1107,7 @@ with tabs[5]:
         st.markdown("<div class='info-callout'>No interest payments found in the selected period.</div>",
                     unsafe_allow_html=True)
     else:
-        st.plotly_chart(charts.chart_interest_growth(int_series), use_container_width=True, key="interest_growth")
+        st.plotly_chart(charts.chart_interest_growth(int_series, base_currency), use_container_width=True, key="interest_growth")
 
         section("Interest Payment Log")
         disp = int_series.copy()
@@ -1113,7 +1123,7 @@ with tabs[5]:
 
 # ── Tab 7 : Trades ───────────────────────────────────────────────────────────
 with tabs[6]:
-    trades_df = analyzer.get_trades_table(df)
+    trades_df = analyzer.get_trades_table(df, base_currency, fx_series)
 
     if trades_df.empty:
         st.markdown("<div class='info-callout'>No buy/sell transactions in the selected period.</div>",

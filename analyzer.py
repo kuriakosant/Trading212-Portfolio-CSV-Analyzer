@@ -20,6 +20,7 @@ from datetime import date
 import brokers
 from brokers import canonical as _canon
 from brokers.fifo import fill_revolut_result
+from fx_engine import convert_currency, fetch_historical_fx
 
 # ---------------------------------------------------------------------------
 # Action type classification
@@ -188,7 +189,7 @@ def classify_trades_for_winrate(sells_df: pd.DataFrame) -> pd.DataFrame:
 # Summary aggregation
 # ---------------------------------------------------------------------------
 
-def compute_summary(df: pd.DataFrame) -> dict:
+def compute_summary(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> dict:
     sells      = df[df["_category"] == "sell"].copy()
     buys       = df[df["_category"] == "buy"].copy()
     dividends  = df[df["_category"] == "dividend"].copy()
@@ -200,36 +201,42 @@ def compute_summary(df: pd.DataFrame) -> dict:
     cashback   = df[df["_category"] == "cashback"].copy()
     card_debits= df[df["_category"] == "card_debit"].copy()
 
-    sells_result  = sells["Result"].fillna(0)
-    gross_profit  = float(sells_result[sells_result > 0].sum())
-    gross_loss    = float(sells_result[sells_result < 0].sum())
-    net_pnl       = gross_profit + gross_loss
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
 
-    total_buy_volume  = float(buys["Total"].fillna(0).abs().sum())
-    total_sell_volume = float(sells["Total"].fillna(0).abs().sum())
+    def _to_base(subset, val_col, ccy_col="Currency (Total)"):
+        if subset.empty or val_col not in subset.columns: 
+            return pd.Series(0.0, index=subset.index)
+        return subset.apply(lambda r: convert_currency(
+            float(r.get(val_col, 0) or 0), 
+            str(r.get(ccy_col, "EUR")), 
+            base_currency, 
+            r.get("Time"), 
+            fx_series
+        ), axis=1)
 
-    div_total_eur   = float(dividends["Total"].fillna(0).sum())
-    div_withholding = float(dividends.get("Withholding tax", pd.Series(dtype=float)).fillna(0).abs().sum())
+    sells_result = _to_base(sells, "Result", "Currency (Result)")
+    gross_profit = float(sells_result[sells_result > 0].sum())
+    gross_loss   = float(sells_result[sells_result < 0].sum())
+    net_pnl      = gross_profit + gross_loss
+
+    total_buy_volume  = float(_to_base(buys, "Total").abs().sum())
+    total_sell_volume = float(_to_base(sells, "Total").abs().sum())
+
+    div_total_eur   = float(_to_base(dividends, "Total").sum())
+    div_withholding = float(_to_base(dividends, "Withholding tax").abs().sum())
     div_gross       = div_total_eur + div_withholding
 
-    int_eur, int_usd = 0.0, 0.0
-    for _, row in interests.iterrows():
-        val = float(row.get("Total", 0) or 0)
-        if str(row.get("Currency (Total)", "")).strip().upper() == "USD":
-            int_usd += val
-        else:
-            int_eur += val
+    int_eur = float(_to_base(interests, "Total").sum())
+    int_usd = 0.0 # Deprecated separation since everything is mapped to base_currency
 
-    cashback_total  = float(cashback["Total"].fillna(0).sum())
-    total_deposited = float(deposits["Total"].fillna(0).abs().sum())
-    total_withdrawn = float(withdrawals["Total"].fillna(0).abs().sum())
-    total_card_spent= float(card_debits["Total"].fillna(0).abs().sum())
+    cashback_total  = float(_to_base(cashback, "Total").sum())
+    total_deposited = float(_to_base(deposits, "Total").abs().sum())
+    total_withdrawn = float(_to_base(withdrawals, "Total").abs().sum())
+    total_card_spent= float(_to_base(card_debits, "Total").abs().sum())
 
-    # Revolut-specific: dividend-tax corrections net out in most cases but
-    # surface the total so the Dividends tab can show it separately.
-    div_tax_correction_total = float(div_tax_corrections["Total"].fillna(0).sum())
+    div_tax_correction_total = float(_to_base(div_tax_corrections, "Total").sum())
 
-    # Calculate aggregate fees
     fee_cols = [
         "Withholding tax", "Finra fee", "Currency conversion fee",
         "French transaction tax", "Stamp duty reserve tax", "UK PTM Levy"
@@ -237,7 +244,7 @@ def compute_summary(df: pd.DataFrame) -> dict:
     fees_breakdown = {}
     total_fees = 0.0
     for col in fee_cols:
-        val = float(df.get(col, pd.Series(dtype=float)).fillna(0).abs().sum())
+        val = float(_to_base(df, col).abs().sum())
         if val > 0:
             fees_breakdown[col] = val
             total_fees += val
@@ -281,7 +288,7 @@ def compute_summary(df: pd.DataFrame) -> dict:
     }
 
     # Attach MWRR metrics
-    mwrr = compute_mwrr(df)
+    mwrr = compute_mwrr(df, base_currency, fx_series)
     result.update(mwrr)
     return result
 
@@ -363,7 +370,7 @@ def _solve_irr_annual(cashflows_yearly: list, tol: float = 1e-9) -> float:
     return (lo + hi) / 2.0
 
 
-def compute_mwrr(df: pd.DataFrame) -> dict:
+def compute_mwrr(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> dict:
     """
     Compute portfolio-level Money-Weighted Rate of Return (MWRR / portfolio IRR).
 
@@ -401,44 +408,44 @@ def compute_mwrr(df: pd.DataFrame) -> dict:
     days_total  = max((t_end - t0).total_seconds() / 86400.0, 1.0)
     years_total = days_total / 365.0
 
-    # The rest of the dashboard standardizes on 1 USD = 0.86 EUR
-    EUR_TO_USD = 1.0 / 0.86
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
 
-    def to_usd(amount, ccy):
-        return float(amount) * EUR_TO_USD if str(ccy).strip().upper() == "EUR" else float(amount)
+    def to_base(amount, ccy, dt):
+        return convert_currency(float(amount or 0), str(ccy), base_currency, dt, fx_series)
 
     # Build cash-flow list in YEARS (not days) so the solver works in annual space
     cf_years = []
 
     for _, row in deposits.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        val = to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))
         cf_years.append((yrs, -abs(val)))
 
     for _, row in withdrawals.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        val = to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))
         cf_years.append((yrs, abs(val)))
 
     for _, row in card_debits.iterrows():
         yrs = (row["Time"] - t0).total_seconds() / (86400.0 * 365.0)
-        val = to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))
+        val = to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))
         cf_years.append((yrs, abs(val)))
 
-    # Compute terminal value (in USD)
-    total_deposited  = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in deposits.iterrows())
-    total_withdrawn  = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in withdrawals.iterrows())
-    total_card_spent = sum(abs(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"))) for _, row in card_debits.iterrows())
+    # Compute terminal value
+    total_deposited  = sum(abs(to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))) for _, row in deposits.iterrows())
+    total_withdrawn  = sum(abs(to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))) for _, row in withdrawals.iterrows())
+    total_card_spent = sum(abs(to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time"))) for _, row in card_debits.iterrows())
     net_deposits     = total_deposited - total_withdrawn - total_card_spent
 
     sells            = df[df["_category"] == "sell"]
-    realized_pnl     = sum(to_usd(row.get("Result", 0) or 0, row.get("Currency (Result)")) for _, row in sells.iterrows())
+    realized_pnl     = sum(to_base(row.get("Result", 0) or 0, row.get("Currency (Result)"), row.get("Time")) for _, row in sells.iterrows())
 
     dividends        = df[df["_category"] == "dividend"]
-    div_total        = sum(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR")) for _, row in dividends.iterrows())
+    div_total        = sum(to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time")) for _, row in dividends.iterrows())
 
     interests        = df[df["_category"] == "interest"]
-    int_total        = sum(to_usd(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR")) for _, row in interests.iterrows())
+    int_total        = sum(to_base(row.get("Total", 0) or 0, row.get("Currency (Total)", "EUR"), row.get("Time")) for _, row in interests.iterrows())
 
     terminal = net_deposits + realized_pnl + div_total + int_total
 
@@ -489,7 +496,7 @@ def compute_mwrr(df: pd.DataFrame) -> dict:
 
 
 
-def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
+def mwrr_cumulative_timeline(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     """
     Compute a daily cumulative return % curve.
 
@@ -505,7 +512,8 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
     end_date = df["Time"].max().date()
     all_days = pd.date_range(start_date, end_date, freq="D")
 
-    EUR_TO_USD = 1.0 / 0.86
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
 
     def daily_agg(condition, col="Total", force_abs=False):
         sub = df[condition].copy()
@@ -515,14 +523,14 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
         if force_abs:
             sub[col] = sub[col].abs()
         
-        # Apply currency conversion
-        def to_usd(row):
-            ccy = row.get("Currency (Total)", "EUR") if col == "Total" else row.get("Currency (Result)", "USD")
+        # Apply exact historical FX conversion
+        def to_base(row):
+            ccy = str(row.get("Currency (Total)", "EUR") if col == "Total" else row.get("Currency (Result)", "EUR"))
             val = float(row.get(col, 0) or 0)
-            return val * EUR_TO_USD if str(ccy).strip().upper() == "EUR" else val
+            return convert_currency(val, ccy, base_currency, row.get("Time"), fx_series)
         
-        sub["_val_usd"] = sub.apply(to_usd, axis=1)
-        return sub.groupby("Date")["_val_usd"].sum().reindex(all_days.date, fill_value=0)
+        sub["_val_base"] = sub.apply(to_base, axis=1)
+        return sub.groupby("Date")["_val_base"].sum().reindex(all_days.date, fill_value=0)
 
     dep = daily_agg(df["_category"] == "deposit", force_abs=True).cumsum()
     wdr = daily_agg(df["_category"] == "withdrawal", force_abs=True).cumsum()
@@ -539,15 +547,17 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
     # Use dep (total deposited) as denominator to avoid division by small net_dep values
     return_pct = np.where(dep > 0, gains / dep * 100, 0.0)
 
+    sym = "€" if base_currency == "EUR" else "$"
+    
     result = pd.DataFrame({
         "Date": all_days.date,
-        "Cumul Deposits ($)": dep.values,
-        "Net Deposits ($)": net_dep.values,
-        "Cumul P&L ($)": pnl.values,
-        "Cumul Dividends ($)": divs.values,
-        "Cumul Interest ($)": ints.values,
-        "Total Gains ($)": gains.values,
-        "Terminal Value ($)": terminal.values,
+        f"Cumul Deposits ({sym})": dep.values,
+        f"Net Deposits ({sym})": net_dep.values,
+        f"Cumul P&L ({sym})": pnl.values,
+        f"Cumul Dividends ({sym})": divs.values,
+        f"Cumul Interest ({sym})": ints.values,
+        f"Total Gains ({sym})": gains.values,
+        f"Terminal Value ({sym})": terminal.values,
         "Return %": return_pct,
     })
 
@@ -556,7 +566,7 @@ def mwrr_cumulative_timeline(df: pd.DataFrame) -> pd.DataFrame:
 
 import io
 
-def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date) -> bytes:
+def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date, base_currency="USD", fx_series=None) -> bytes:
     """
     Creates a professionally formatted multi-sheet Excel file (.xlsx) in memory.
     Sheet 1: High-level Portfolio Total Overview
@@ -565,16 +575,18 @@ def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date
     net_deposited = summary["total_deposited_eur"] - summary["total_withdrawn_eur"] - summary.get("total_card_spent_eur", 0)
     total_return = summary["net_pnl"] + summary["div_net_eur"] + summary["interest_eur"] + summary.get("interest_usd", 0) + summary["cashback_eur"]
     
+    sym = "€" if base_currency == "EUR" else "$"
+
     # Overview Data
     overview_data = {
         "Metric": [
             "Start Date", "End Date",
-            "Total Deposits (€)", "Total Withdrawals (€)", "Net Deposited (€)",
-            "Gross Profit ($)", "Gross Loss ($)", "Net Trading P&L ($)", 
+            f"Total Deposits ({sym})", f"Total Withdrawals ({sym})", f"Net Deposited ({sym})",
+            f"Gross Profit ({sym})", f"Gross Loss ({sym})", f"Net Trading P&L ({sym})", 
             "Win Rate (%)", "Total Sell Trades",
-            "Gross Dividends (€)", "Withholding Tax (€)", "Net Dividends (€)",
-            "Total Interest (EUR + USD eq.)", "Cashback (€)",
-            "Total Return (P&L + Yield)"
+            f"Gross Dividends ({sym})", f"Withholding Tax ({sym})", f"Net Dividends ({sym})",
+            f"Total Interest ({sym})", f"Cashback ({sym})",
+            f"Total Return ({sym})"
         ],
         "Value": [
             start_date.strftime("%Y-%m-%d") if pd.notna(start_date) else "",
@@ -596,17 +608,28 @@ def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date
     deposits = df[df["_category"] == "deposit"].copy()
     withdrawals = df[df["_category"] == "withdrawal"].copy()
     
-    dep_monthly = deposits.groupby(deposits["Time"].dt.to_period("M"))["Total"].sum() if not deposits.empty else pd.Series()
-    wdr_monthly = withdrawals.groupby(withdrawals["Time"].dt.to_period("M"))["Total"].sum() if not withdrawals.empty else pd.Series()
+    if fx_series is None: fx_series = pd.Series(dtype=float)
+    def _to_base(r):
+        v = float(r.get("Total", 0) or 0)
+        c = str(r.get("Currency (Total)", "EUR"))
+        return convert_currency(v, c, base_currency, r.get("Time"), fx_series)
+
+    if not deposits.empty:
+        deposits["_Total_base"] = deposits.apply(_to_base, axis=1)
+    if not withdrawals.empty:
+        withdrawals["_Total_base"] = withdrawals.apply(_to_base, axis=1)
+        
+    dep_monthly = deposits.groupby(deposits["Time"].dt.to_period("M"))["_Total_base"].sum() if not deposits.empty else pd.Series()
+    wdr_monthly = withdrawals.groupby(withdrawals["Time"].dt.to_period("M"))["_Total_base"].sum() if not withdrawals.empty else pd.Series()
     
     # Add to df_monthly seamlessly
-    df_monthly["Deposits (€)"] = df_monthly["Month"].map(lambda m: dep_monthly.get(pd.Period(m, freq='M'), 0.0))
-    df_monthly["Withdrawals (€)"] = df_monthly["Month"].map(lambda m: wdr_monthly.get(pd.Period(m, freq='M'), 0.0))
-    df_monthly["Net Monthly Deposited (€)"] = df_monthly["Deposits (€)"] - df_monthly["Withdrawals (€)"]
+    df_monthly[f"Deposits ({sym})"] = df_monthly["Month"].map(lambda m: dep_monthly.get(pd.Period(m, freq='M'), 0.0))
+    df_monthly[f"Withdrawals ({sym})"] = df_monthly["Month"].map(lambda m: wdr_monthly.get(pd.Period(m, freq='M'), 0.0))
+    df_monthly[f"Net Monthly Deposited ({sym})"] = df_monthly[f"Deposits ({sym})"] - df_monthly[f"Withdrawals ({sym})"]
 
     # Reorder columns for readability
-    month_cols = ["Month", "Deposits (€)", "Withdrawals (€)", "Net Monthly Deposited (€)", 
-                  "Profit", "Loss", "Net P&L", "Dividends (EUR)", "Interest"]
+    month_cols = ["Month", f"Deposits ({sym})", f"Withdrawals ({sym})", f"Net Monthly Deposited ({sym})", 
+                  "Profit", "Loss", "Net P&L", f"Dividends ({base_currency})", "Interest"]
     df_monthly = df_monthly[[c for c in month_cols if c in df_monthly.columns]]
 
     # Write to Excel BytesIO
@@ -640,7 +663,7 @@ def export_portfolio_excel(df: pd.DataFrame, summary: dict, start_date, end_date
 # Per-ticker breakdown
 # ---------------------------------------------------------------------------
 
-def ticker_pnl(df: pd.DataFrame) -> pd.DataFrame:
+def ticker_pnl(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     sells = df[df["_category"] == "sell"].copy()
     if sells.empty:
         return pd.DataFrame(columns=["Ticker", "Name", "Sell Trades", "Profit", "Loss", "Net P&L"])
@@ -698,64 +721,89 @@ def pnl_timeline(df: pd.DataFrame, freq: str = "D") -> pd.DataFrame:
     return agg
 
 
-def dividend_series(df: pd.DataFrame) -> pd.DataFrame:
+def dividend_series(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     """
     Each individual dividend payment with running cumulative total.
     """
     divs = df[df["_category"] == "dividend"].copy()
+    sym = "€" if base_currency == "EUR" else "$"
+    
     if divs.empty:
-        return pd.DataFrame(columns=["Time", "Ticker", "Net (EUR)", "Withholding (EUR)", "Cumulative (EUR)"])
+        return pd.DataFrame(columns=["Time", "Ticker", f"Net ({base_currency})", f"Withholding ({base_currency})", f"Cumulative ({base_currency})"])
+
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
 
     divs = divs.sort_values("Time")
-    divs["Net (EUR)"]         = divs["Total"].fillna(0)
-    divs["Withholding (EUR)"] = divs.get("Withholding tax", pd.Series(0, index=divs.index)).fillna(0).abs()
-    divs["Cumulative (EUR)"]  = divs["Net (EUR)"].cumsum()
-    return divs[["Time", "Ticker", "Name", "Net (EUR)", "Withholding (EUR)", "Cumulative (EUR)"]].reset_index(drop=True)
+    
+    def _to_base(row, col="Total"):
+        v = float(row.get(col, 0) or 0)
+        c = str(row.get("Currency (Total)", "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
+
+    divs[f"Net ({base_currency})"] = divs.apply(lambda r: _to_base(r, "Total"), axis=1)
+    divs[f"Withholding ({base_currency})"] = divs.apply(lambda r: abs(_to_base(r, "Withholding tax")), axis=1)
+    divs[f"Cumulative ({base_currency})"]  = divs[f"Net ({base_currency})"].cumsum()
+    
+    return divs[["Time", "Ticker", "Name", f"Net ({base_currency})", f"Withholding ({base_currency})", f"Cumulative ({base_currency})"]].reset_index(drop=True)
 
 
-def interest_series(df: pd.DataFrame) -> pd.DataFrame:
+def interest_series(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     """
     Each individual interest/lending payment with running cumulative total.
-    Separates EUR and USD rows.
     """
     ints = df[df["_category"] == "interest"].copy()
+    sym = "€" if base_currency == "EUR" else "$"
+    
     if ints.empty:
-        return pd.DataFrame(columns=["Time", "Action", "Amount", "Currency", "Cumulative EUR", "Cumulative USD"])
+        return pd.DataFrame(columns=["Time", "Action", "Amount", "Currency", f"Cumulative ({base_currency})"])
+
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
 
     ints = ints.sort_values("Time")
-    ints["Amount"]   = ints["Total"].fillna(0)
-    ints["Currency"] = ints["Currency (Total)"].fillna("EUR").str.strip()
+    
+    def _to_base(row):
+        v = float(row.get("Total", 0) or 0)
+        c = str(row.get("Currency (Total)", "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
 
-    eur_rows = ints[ints["Currency"] == "EUR"].copy()
-    usd_rows = ints[ints["Currency"] == "USD"].copy()
+    ints["Amount"] = ints.apply(_to_base, axis=1)
+    ints["Currency"] = base_currency
+    ints[f"Cumulative ({base_currency})"] = ints["Amount"].cumsum()
 
-    eur_rows["Cumulative EUR"] = eur_rows["Amount"].cumsum()
-    usd_rows["Cumulative USD"] = usd_rows["Amount"].cumsum()
-
-    result = pd.concat([eur_rows.assign(**{"Cumulative USD": np.nan}),
-                        usd_rows.assign(**{"Cumulative EUR": np.nan})], ignore_index=True)
-    result = result.sort_values("Time")
-    return result[["Time", "Action", "Amount", "Currency", "Cumulative EUR", "Cumulative USD"]].reset_index(drop=True)
+    return ints[["Time", "Action", "Amount", "Currency", f"Cumulative ({base_currency})"]].reset_index(drop=True)
 
 
-def monthly_summary(df: pd.DataFrame) -> pd.DataFrame:
+def monthly_summary(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     """Month-level summary: Profit, Loss, Net P&L, Dividends, Interest."""
     rows = []
     temp = df.copy()
     temp["_month"] = temp["Time"].dt.to_period("M")
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
+
+    def _to_base(row, val_col, ccy_col="Currency (Total)"):
+        v = float(row.get(val_col, 0) or 0)
+        c = str(row.get(ccy_col, "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
+
+    temp["_Result_base"] = temp.apply(lambda r: _to_base(r, "Result", "Currency (Result)"), axis=1)
+    temp["_Total_base"]  = temp.apply(lambda r: _to_base(r, "Total", "Currency (Total)"), axis=1)
+
     for month, group in temp.groupby("_month"):
         sells    = group[group["_category"] == "sell"]
-        result   = sells["Result"].fillna(0)
+        result   = sells["_Result_base"].fillna(0)
         profit   = float(result.clip(lower=0).sum())
         loss     = float(result.clip(upper=0).sum())
-        div_net  = float(group[group["_category"] == "dividend"]["Total"].fillna(0).sum())
-        int_tot  = float(group[group["_category"] == "interest"]["Total"].fillna(0).sum())
+        div_net  = float(group[group["_category"] == "dividend"]["_Total_base"].fillna(0).sum())
+        int_tot  = float(group[group["_category"] == "interest"]["_Total_base"].fillna(0).sum())
         rows.append({
             "Month": str(month),
             "Profit": profit,
             "Loss": abs(loss),
             "Net P&L": profit + loss,
-            "Dividends (EUR)": max(div_net, 0),
+            f"Dividends ({base_currency})": max(div_net, 0),
             "Interest": int_tot,
         })
     return pd.DataFrame(rows)
@@ -775,13 +823,26 @@ def get_dividends_table(df: pd.DataFrame) -> pd.DataFrame:
     return divs[[c for c in cols if c in divs.columns]].sort_values("Time", ascending=False).reset_index(drop=True)
 
 
-def get_trades_table(df: pd.DataFrame) -> pd.DataFrame:
+def get_trades_table(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     trades = df[df["_category"].isin(["buy", "sell"])].copy()
     if trades.empty:
         return pd.DataFrame()
+        
+    if fx_series is None:
+        fx_series = pd.Series(dtype=float)
+
+    def _to_base(row, val_col, ccy_col):
+        v = float(row.get(val_col, 0) or 0)
+        c = str(row.get(ccy_col, "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
+
+    trades[f"Result ({base_currency})"] = trades.apply(lambda r: _to_base(r, "Result", "Currency (Result)"), axis=1).round(2)
+    trades[f"Total ({base_currency})"]  = trades.apply(lambda r: _to_base(r, "Total", "Currency (Total)"), axis=1).round(2)
+
     cols = ["Time", "Action", "Ticker", "Name", "No. of shares",
             "Price / share", "Currency (Price / share)",
-            "Result", "Currency (Result)", "Total", "Currency (Total)"]
+            "Result", "Currency (Result)", f"Result ({base_currency})", 
+            "Total", "Currency (Total)", f"Total ({base_currency})"]
     return trades[[c for c in cols if c in trades.columns]].sort_values("Time", ascending=False).reset_index(drop=True)
 
 
@@ -789,26 +850,23 @@ def get_trades_table(df: pd.DataFrame) -> pd.DataFrame:
 # Company deep-dive stats  (NEW)
 # ---------------------------------------------------------------------------
 
-def company_detailed_stats(df: pd.DataFrame) -> pd.DataFrame:
+def company_detailed_stats(df: pd.DataFrame, base_currency: str = 'USD', fx_series: pd.Series = None) -> pd.DataFrame:
     """
     Return a comprehensive per-company (ticker) breakdown DataFrame.
-
-    Columns:
-        Ticker, Name,
-        Buy Trades, Sell Trades, Total Trades,
-        Shares Bought, Shares Sold,
-        Volume Bought ($), Volume Sold ($),
-        Gross Profit ($), Gross Loss ($), Net P&L ($),
-        Win Rate (%), Winning Sells, Losing Sells, Break-Even Sells,
-        Best Trade ($), Worst Trade ($), Avg Win ($), Avg Loss ($),
-        First Trade, Last Trade, Days Active
     """
     trades = df[df["_category"].isin(["buy", "sell"])].copy()
     if trades.empty:
         return pd.DataFrame()
 
-    trades["Result_clean"] = trades["Result"].fillna(0)
-    trades["Total_abs"]    = trades["Total"].fillna(0).abs()
+    if fx_series is None: fx_series = pd.Series(dtype=float)
+
+    def _to_base(row, val_col, ccy_col):
+        v = float(row.get(val_col, 0) or 0)
+        c = str(row.get(ccy_col, "EUR"))
+        return convert_currency(v, c, base_currency, row.get("Time"), fx_series)
+
+    trades["Result_clean"] = trades.apply(lambda r: _to_base(r, "Result", "Currency (Result)"), axis=1).fillna(0)
+    trades["Total_abs"]    = trades.apply(lambda r: _to_base(r, "Total", "Currency (Total)"), axis=1).fillna(0).abs()
     trades["Shares_abs"]   = trades["No. of shares"].fillna(0).abs()
 
     rows = []

@@ -126,7 +126,7 @@ def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily") -> 
         "<extra></extra>"
     )
 
-    fig.add_trace(go.Scatter(
+    # Deprecated second trace\n    # fig.add_trace(go.Scatter(
         x=x, y=cum,
         mode="lines",
         name="Cumulative P&L",
@@ -192,7 +192,7 @@ def chart_pnl_timeline(timeline_df: pd.DataFrame, freq_label: str = "Daily") -> 
 # 2. Dividend growth — step chart with each payment + running total
 # ---------------------------------------------------------------------------
 
-def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
+def chart_dividend_growth(div_series: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
     """
     Step + bar combo.
     Top: Cumulative dividend total (step line).
@@ -201,6 +201,8 @@ def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
     if div_series.empty:
         return _empty("No dividend payments in selected period")
 
+    sym = "€" if base_currency == "EUR" else "$"
+    
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
@@ -211,7 +213,7 @@ def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
     # Cumulative step line
     fig.add_trace(go.Scatter(
         x=div_series["Time"],
-        y=div_series["Cumulative (EUR)"],
+        y=div_series[f"Cumulative ({base_currency})"],
         mode="lines+markers",
         name="Cumulative Dividends",
         line=dict(color=C_PURPLE, width=2.5, shape="hv"),
@@ -219,14 +221,14 @@ def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
                     line=dict(color=C_BG, width=2)),
         fill="tozeroy",
         fillcolor=C_PURPLE_DIM,
-        customdata=div_series[["Ticker", "Net (EUR)", "Withholding (EUR)"]].values,
+        customdata=div_series[["Ticker", f"Net ({base_currency})", f"Withholding ({base_currency})"]].values,
         hovertemplate=(
             "<b>%{x|%b %d, %Y}</b><br>"
             "─────────────────<br>"
             "Ticker         : <b>%{customdata[0]}</b><br>"
-            "This payment   : <b>€%{customdata[1]:.4f}</b><br>"
-            "Withholding    : €%{customdata[2]:.4f}<br>"
-            "Running total  : <b>€%{y:.4f}</b>"
+            f"This payment   : <b>{sym}%{{customdata[1]:.4f}}</b><br>"
+            f"Withholding    : {sym}%{{customdata[2]:.4f}}<br>"
+            f"Running total  : <b>{sym}%{{y:.4f}}</b>"
             "<extra></extra>"
         ),
     ), row=1, col=1)
@@ -240,14 +242,14 @@ def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
         sub = div_series[div_series["Ticker"].fillna("Unknown") == ticker]
         fig.add_trace(go.Bar(
             x=sub["Time"],
-            y=sub["Net (EUR)"],
+            y=sub[f"Net ({base_currency})"],
             name=ticker,
             marker_color=color_map[ticker],
             marker_line_width=0,
             hovertemplate=(
                 f"<b>{ticker}</b><br>"
                 "%{x|%b %d, %Y}<br>"
-                "Net: <b>€%{y:.4f}</b>"
+                f"Net: <b>{sym}%{{y:.4f}}</b>"
                 "<extra></extra>"
             ),
         ), row=2, col=1)
@@ -275,7 +277,7 @@ def chart_dividend_growth(div_series: pd.DataFrame) -> go.Figure:
 # 3. Interest growth — EUR + USD separate step lines
 # ---------------------------------------------------------------------------
 
-def chart_interest_growth(int_series: pd.DataFrame) -> go.Figure:
+def chart_interest_growth(int_series: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
     """
     Separate cumulative step lines for EUR and USD interest income.
     Each payment shown as a marker.
@@ -283,50 +285,28 @@ def chart_interest_growth(int_series: pd.DataFrame) -> go.Figure:
     if int_series.empty:
         return _empty("No interest payments in selected period")
 
-    fig = _fig("🏦 Interest Income — Cumulative Growth", height=420)
+    sym = "€" if base_currency == "EUR" else "$"
+    
+    fig = _fig(f"🏦 Interest Income — Cumulative Growth ({sym})", height=420)
 
-    eur = int_series[int_series["Currency"] == "EUR"].copy()
-    usd = int_series[int_series["Currency"] == "USD"].copy()
-
-    if not eur.empty:
-        fig.add_trace(go.Scatter(
-            x=eur["Time"], y=eur["Cumulative EUR"],
-            mode="lines+markers",
-            name="EUR Interest",
-            line=dict(color=C_TEAL, width=2.5, shape="hv"),
-            marker=dict(size=7, color=C_TEAL, symbol="circle",
-                        line=dict(color=C_BG, width=2)),
-            fill="tozeroy",
-            fillcolor=C_TEAL_DIM,
-            customdata=eur[["Amount", "Action"]].values,
-            hovertemplate=(
-                "<b>%{x|%b %d, %Y}</b><br>"
-                "Type : %{customdata[1]}<br>"
-                "Amount : <b>€%{customdata[0]:.4f}</b><br>"
-                "Running total : <b>€%{y:.4f}</b>"
-                "<extra></extra>"
-            ),
-        ))
-
-    if not usd.empty:
-        fig.add_trace(go.Scatter(
-            x=usd["Time"], y=usd["Cumulative USD"],
-            mode="lines+markers",
-            name="USD Interest",
-            line=dict(color=C_AMBER, width=2.5, shape="hv"),
-            marker=dict(size=7, color=C_AMBER, symbol="diamond",
-                        line=dict(color=C_BG, width=2)),
-            fill="tozeroy",
-            fillcolor="rgba(251,191,36,0.08)",
-            customdata=usd[["Amount", "Action"]].values,
-            hovertemplate=(
-                "<b>%{x|%b %d, %Y}</b><br>"
-                "Type : %{customdata[1]}<br>"
-                "Amount : <b>${%{customdata[0]:.4f}</b><br>"
-                "Running total : <b>${%{y:.4f}</b>"
-                "<extra></extra>"
-            ),
-        ))
+    fig.add_trace(go.Scatter(
+        x=int_series["Time"], y=int_series[f"Cumulative ({base_currency})"],
+        mode="lines+markers",
+        name=f"Interest ({base_currency})",
+        line=dict(color=C_TEAL, width=2.5, shape="hv"),
+        marker=dict(size=7, color=C_TEAL, symbol="circle",
+                    line=dict(color=C_BG, width=2)),
+        fill="tozeroy",
+        fillcolor=C_TEAL_DIM,
+        customdata=int_series[["Amount", "Action"]].values,
+        hovertemplate=(
+            "<b>%{x|%b %d, %Y}</b><br>"
+            "Type : %{customdata[1]}<br>"
+            f"Amount : <b>{sym}%{{customdata[0]:.4f}}</b><br>"
+            f"Running total : <b>{sym}%{{y:.4f}}</b>"
+            "<extra></extra>"
+        ),
+    ))
 
     fig.update_yaxes(title_text="Cumulative amount")
     return fig
@@ -336,7 +316,7 @@ def chart_interest_growth(int_series: pd.DataFrame) -> go.Figure:
 # 4. Monthly summary — grouped bars
 # ---------------------------------------------------------------------------
 
-def chart_monthly_summary(monthly_df: pd.DataFrame) -> go.Figure:
+def chart_monthly_summary(monthly_df: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
     if monthly_df.empty:
         return _empty("No data in selected period")
 
@@ -360,7 +340,7 @@ def chart_monthly_summary(monthly_df: pd.DataFrame) -> go.Figure:
         hovertemplate="<b>%{x}</b><br>Net P&L: <b>$%{y:+,.2f}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
-        x=monthly_df["Month"], y=monthly_df["Dividends (EUR)"],
+        x=monthly_df["Month"], y=monthly_df[f"Dividends ({base_currency})"],
         name="Dividends (€)", marker_color=C_PURPLE, marker_line_width=0,
         hovertemplate="<b>%{x}</b><br>Dividends: <b>€%{y:.4f}</b><extra></extra>",
     ))
@@ -378,7 +358,7 @@ def chart_monthly_summary(monthly_df: pd.DataFrame) -> go.Figure:
 # 5. Top tickers bar chart
 # ---------------------------------------------------------------------------
 
-def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15) -> go.Figure:
+def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15, base_currency: str = "USD") -> go.Figure:
     if ticker_df.empty:
         return _empty("No sell transactions in selected period")
 
@@ -559,7 +539,7 @@ def chart_deposits_vs_pnl(df: pd.DataFrame) -> go.Figure:
 # 8. Company comparison — full horizontal bar (all companies)
 # ---------------------------------------------------------------------------
 
-def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
+def chart_company_pnl_bars(company_df: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
     """
     Full sorted horizontal bar chart of every company's Net P&L.
     Color: green if positive, red if negative.
@@ -568,32 +548,34 @@ def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
     if company_df.empty:
         return _empty("No trade data in selected period")
 
-    df = company_df.sort_values("Net P&L ($)")
-    colors = [C_GREEN if v >= 0 else C_RED for v in df["Net P&L ($)"]]
+    sym = "€" if base_currency == "EUR" else "$"
+    col_pnl = f"Net P&L ({sym})"
+    df = company_df.sort_values(col_pnl)
+    colors = [C_GREEN if v >= 0 else C_RED for v in df[col_pnl]]
 
-    fig = _fig("🏢 Net P&L by Company", height=max(380, len(df) * 36))
+    fig = _fig(f"🏢 Net P&L by Company ({sym})", height=max(380, len(df) * 36))
 
     fig.add_trace(go.Bar(
-        x=df["Net P&L ($)"],
+        x=df[col_pnl],
         y=df["Ticker"],
         orientation="h",
         marker_color=colors,
         marker_line_width=0,
-        customdata=df[["Gross Profit ($)", "Gross Loss ($)", "Total Trades",
-                        "Win Rate (%)", "Best Trade ($)", "Worst Trade ($)"]].values,
+        customdata=df[[f"Gross Profit ({sym})", f"Gross Loss ({sym})", "Total Trades",
+                        "Win Rate (%)", f"Best Trade ({sym})", f"Worst Trade ({sym})"]].values,
         hovertemplate=(
             "<b>%{y}</b><br>"
             "──────────────────────<br>"
-            "Net P&L       : <b>$%{x:+,.2f}</b><br>"
-            "Gross Profit  : <b style='color:#22c55e'>$%{customdata[0]:,.2f}</b><br>"
-            "Gross Loss    : <b style='color:#f43f5e'>$%{customdata[1]:,.2f}</b><br>"
+            f"Net P&L       : <b>{sym}%{{x:+,.2f}}</b><br>"
+            f"Gross Profit  : <b style='color:#22c55e'>{sym}%{{customdata[0]:,.2f}}</b><br>"
+            f"Gross Loss    : <b style='color:#f43f5e'>{sym}%{{customdata[1]:,.2f}}</b><br>"
             "Total Trades  : %{customdata[2]}<br>"
             "Win Rate      : %{customdata[3]}%<br>"
-            "Best Trade    : $%{customdata[4]:+,.2f}<br>"
-            "Worst Trade   : $%{customdata[5]:+,.2f}"
+            f"Best Trade    : {sym}%{{customdata[4]:+,.2f}}<br>"
+            f"Worst Trade   : {sym}%{{customdata[5]:+,.2f}}"
             "<extra></extra>"
         ),
-        text=[f"${v:+,.2f}" for v in df["Net P&L ($)"]],
+        text=[f"{sym}{v:+,.2f}" for v in df[col_pnl]],
         textposition="outside",
         cliponaxis=False,
         textfont=dict(size=10, color=colors),
@@ -601,14 +583,14 @@ def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
 
     _add_zero_line(fig, axis="x")
     
-    max_val = df["Net P&L ($)"].max()
-    min_val = df["Net P&L ($)"].min()
+    max_val = df[col_pnl].max()
+    min_val = df[col_pnl].min()
     x_max = float(max_val) * 1.2 if max_val > 0 else 0.0
     x_min = float(min_val) * 1.2 if min_val < 0 else 0.0
     if x_max == 0 and x_min == 0:
         x_max, x_min = 1.0, -1.0
         
-    fig.update_xaxes(title_text="Net P&L ($)", range=[x_min, x_max])
+    fig.update_xaxes(title_text=f"Net P&L ({sym})", range=[x_min, x_max])
     return fig
 
 
@@ -616,32 +598,36 @@ def chart_company_pnl_bars(company_df: pd.DataFrame) -> go.Figure:
 # 9. Company bubble chart  (trades vs P&L, sized by volume)
 # ---------------------------------------------------------------------------
 
-def chart_company_bubble(company_df: pd.DataFrame) -> go.Figure:
+def chart_company_bubble(company_df: pd.DataFrame, base_currency: str = "USD") -> go.Figure:
     """
     Scatter/bubble chart:
       X = Total Trades
-      Y = Net P&L ($)
-      Size = Vol Bought ($)  (normalized)
+      Y = Net P&L (Base)
+      Size = Vol Bought (Base)
       Color = Win Rate (%)
     """
     if company_df.empty:
         return _empty("No trade data in selected period")
 
+    sym = "€" if base_currency == "EUR" else "$"
+    col_pnl = f"Net P&L ({sym})"
+    col_vol = f"Volume Bought ({sym})"
+
     df = company_df.copy()
     # Normalize bubble size
-    vol_max = df["Vol Bought ($)"].max()
+    vol_max = df[col_vol].max()
     if vol_max > 0:
-        df["_size"] = (df["Vol Bought ($)"] / vol_max * 50 + 8).clip(upper=60)
+        df["_size"] = (df[col_vol] / vol_max * 50 + 8).clip(upper=60)
     else:
         df["_size"] = 12
 
-    colors = [C_GREEN if v >= 0 else C_RED for v in df["Net P&L ($)"]]
+    colors = [C_GREEN if v >= 0 else C_RED for v in df[col_pnl]]
 
-    fig = _fig("📊 Trades vs P&L (bubble size = volume bought)", height=480)
+    fig = _fig(f"📊 Trades vs P&L (bubble size = volume bought in {sym})", height=480)
 
     fig.add_trace(go.Scatter(
         x=df["Total Trades"],
-        y=df["Net P&L ($)"],
+        y=df[col_pnl],
         mode="markers+text",
         text=df["Ticker"],
         textposition="top center",
@@ -660,17 +646,17 @@ def chart_company_bubble(company_df: pd.DataFrame) -> go.Figure:
             ),
             line=dict(color=C_BG, width=1.5),
         ),
-        customdata=df[["Name", "Net P&L ($)", "Win Rate (%)",
-                        "Vol Bought ($)", "Best Trade ($)", "Worst Trade ($)"]].values,
+        customdata=df[["Name", col_pnl, "Win Rate (%)",
+                        col_vol, f"Best Trade ({sym})", f"Worst Trade ({sym})"]].values,
         hovertemplate=(
             "<b>%{text}</b> — %{customdata[0]}<br>"
             "──────────────────────<br>"
             "Total Trades : %{x}<br>"
-            "Net P&L      : <b>$%{customdata[1]:+,.2f}</b><br>"
+            f"Net P&L      : <b>{sym}%{{customdata[1]:+,.2f}}</b><br>"
             "Win Rate     : %{customdata[2]}%<br>"
-            "Vol Bought   : $%{customdata[3]:,.0f}<br>"
-            "Best Trade   : $%{customdata[4]:+,.2f}<br>"
-            "Worst Trade  : $%{customdata[5]:+,.2f}"
+            f"Vol Bought   : {sym}%{{customdata[3]:,.0f}}<br>"
+            f"Best Trade   : {sym}%{{customdata[4]:+,.2f}}<br>"
+            f"Worst Trade  : {sym}%{{customdata[5]:+,.2f}}"
             "<extra></extra>"
         ),
     ))
