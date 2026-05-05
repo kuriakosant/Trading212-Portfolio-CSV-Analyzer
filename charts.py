@@ -388,13 +388,13 @@ def chart_top_tickers(ticker_df: pd.DataFrame, top_n: int = 15, base_currency: s
         customdata=combined[["Profit", "Loss", "Sell Trades"]].values,
         hovertemplate=(
             "<b>%{y}</b><br>"
-            "Net P&L : <b>$%{x:+,.2f}</b><br>"
-            "Profit  : $%{customdata[0]:,.2f}<br>"
-            "Loss    : $%{customdata[1]:,.2f}<br>"
+            f"Net P&L : <b>{sym}%{{x:+,.2f}}</b><br>"
+            f"Profit  : {sym}%{{customdata[0]:,.2f}}<br>"
+            f"Loss    : {sym}%{{customdata[1]:,.2f}}<br>"
             "Trades  : %{customdata[2]}"
             "<extra></extra>"
         ),
-        text=[f"${v:+,.2f}" for v in combined["Net P&L"]],
+        text=[f"{sym}{v:+,.2f}" for v in combined["Net P&L"]],
         textposition="outside",
         textfont=dict(color=[C_GREEN if v >= 0 else C_RED for v in combined["Net P&L"]], size=11),
     ))
@@ -470,10 +470,10 @@ def chart_income_pie(summary: dict, base_currency: str = "USD") -> go.Figure:
             color=bar_colors,
             line=dict(color="rgba(0,0,0,0)", width=0),
         ),
-        text=[f"  ${v:,.2f}  ({p:.1f}%)" for v, p in zip(bar_values, bar_pcts)],
+        text=[f"  {sym}{v:,.2f}  ({p:.1f}%)" for v, p in zip(bar_values, bar_pcts)],
         textposition="outside",
         textfont=dict(size=11, color=C_TEXT),
-        hovertemplate="<b>%{y}</b><br>Amount: $%{x:,.4f}<extra></extra>",
+        hovertemplate=f"<b>%{{y}}</b><br>Amount: {sym}%{{x:,.4f}}<extra></extra>",
         showlegend=False,
         cliponaxis=False,
     ), row=1, col=2)
@@ -500,7 +500,7 @@ def chart_income_pie(summary: dict, base_currency: str = "USD") -> go.Figure:
         margin=dict(l=10, r=30, t=50, b=10),
         transition=dict(duration=600, easing="cubic-in-out"),
         annotations=[dict(
-            text=f"<b>${profit_val:,.0f}</b><br><span style='font-size:12px'>trade profit</span>",
+            text=f"<b>{sym}{profit_val:,.0f}</b><br><span style='font-size:12px'>trade profit</span>",
             x=0.205, y=0.5, xref="paper", yref="paper",
             showarrow=False, font=dict(size=14, color=C_TEXT),
             align="center",
@@ -541,7 +541,7 @@ def chart_deposits_vs_pnl(df: pd.DataFrame, base_currency: str = "USD", fx_serie
         x=pnl.index.astype(str), y=pnl.values,
         mode="lines", name=f"Trade P&L ({sym})",
         line=dict(color=C_BLUE, width=2, shape="spline", dash="dot"),
-        hovertemplate=f"<b>%{x}</b><br>Trade P&L: <b>{sym}%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Trade P&L: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
     ))
 
     return fig
@@ -791,7 +791,7 @@ def chart_company_compare(df: pd.DataFrame, tickers: list, base_currency: str = 
             mode="lines",
             name=ticker,
             line=dict(color=col, width=2.5, shape="spline", smoothing=0.3),
-            hovertemplate=f"<b>{ticker}</b> — %{{x}}<br>Cumul P&L: <b>${{y:+,.2f}}</b><extra></extra>",
+            hovertemplate=f"<b>{ticker}</b> — %{{x}}<br>Cumul P&L: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
         ))
 
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.18)", line_width=1)
@@ -943,7 +943,8 @@ def chart_total_portfolio(prog_df: pd.DataFrame, show_dep: bool = True, show_pnl
 # ---------------------------------------------------------------------------
 
 def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
-                          mwrr_total: float = 0.0) -> go.Figure:
+                          mwrr_total: float = 0.0, base_currency: str = "USD") -> go.Figure:
+    sym = "€" if base_currency == "EUR" else "$"
     """
     Standalone premium chart for cumulative portfolio Return %.
     Shows the return curve with gradient fill, milestone annotation,
@@ -982,10 +983,10 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
         hovertemplate=(
             "<b>%{x}</b><br>"
             "────────────────────<br>"
-            "Return       : <b>%{y:+.2f}%</b><br>"
-            "Terminal Val : <b>$%{customdata[0]:,.2f}</b><br>"
-            "Deposited    : <b>$%{customdata[1]:,.2f}</b><br>"
-            "Total Gains  : <b>$%{customdata[2]:+,.2f}</b>"
+            f"Return       : <b>%{{y:+.2f}}%</b><br>"
+            f"Terminal Val : <b>{sym}%{{customdata[0]:,.2f}}</b><br>"
+            f"Deposited    : <b>{sym}%{{customdata[1]:,.2f}}</b><br>"
+            f"Total Gains  : <b>{sym}%{{customdata[2]:+,.2f}}</b>"
             "<extra></extra>"
         ),
     ), row=1, col=1)
@@ -1012,7 +1013,7 @@ def chart_return_timeline(return_df: pd.DataFrame, mwrr_annual: float = 0.0,
         name=f"Daily Gains Δ ({sym})",
         marker_color=bar_cols,
         marker_line_width=0,
-        hovertemplate=f"<b>%{x}</b><br>Daily Δ: <b>{sym}%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Daily Δ: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
     ), row=2, col=1)
     fig.add_hline(y=0, line_color="rgba(255,255,255,0.2)", line_width=1, row=2, col=1)
 
@@ -1085,9 +1086,9 @@ def chart_return_contribution(company_df: pd.DataFrame, mwrr_total: float = 0.0,
             "<b>%{y}</b><br>"
             "────────────────────<br>"
             "Return Contribution : <b>%{x:+.2f}%</b><br>"
-            "Net P&L             : <b>$%{customdata[0]:+,.2f}</b><br>"
-            "Win Rate            : %{customdata[1]:.1f}%<br>"
-            "Vol Bought          : $%{customdata[2]:,.0f}"
+            f"Net P&L             : <b>{sym}%{{customdata[0]:+,.2f}}</b><br>"
+            f"Win Rate            : %{{customdata[1]:.1f}}%<br>"
+            f"Vol Bought          : {sym}%{{customdata[2]:,.0f}}"
             "<extra></extra>"
         ),
     ))

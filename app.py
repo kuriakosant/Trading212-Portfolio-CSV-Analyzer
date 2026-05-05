@@ -809,6 +809,7 @@ if not prog_df.empty:
     st.plotly_chart(charts.chart_total_portfolio(
         prog_df, show_dep, show_pnl, show_div, show_int, chart_mode,
         return_df=return_df if not return_df.empty else None,
+        base_currency=base_currency,
     ), use_container_width=True, key="total_portfolio")
 
 # ---------------------------------------------------------------------------
