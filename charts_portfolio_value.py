@@ -70,6 +70,7 @@ def chart_portfolio_value(
     trend_up    = pct_change >= 0
     trend_color = C_GREEN if trend_up else C_RED
     trend_arrow = "▲" if trend_up else "▼"
+    currency_symbol = "€" if base_currency == "EUR" else "$"
 
     fig = make_subplots(
         rows=2, cols=1,
@@ -93,11 +94,11 @@ def chart_portfolio_value(
             name="Portfolio",
             customdata=ohlc_df[["_open_to_close_usd", "_open_to_close_pct"]].fillna(0),
             hovertemplate=(
-                "<b>%{x}</b><br><br>"
-                "Open:  $%{open:,.2f}<br>"
-                "High:  $%{high:,.2f}<br>"
-                "Low:   $%{low:,.2f}<br>"
-                "Close: $%{close:,.2f}<br><br>"
+                f"<b>%{{x}}</b><br><br>"
+                f"Open:  {currency_symbol}%{{open:,.2f}}<br>"
+                f"High:  {currency_symbol}%{{high:,.2f}}<br>"
+                f"Low:   {currency_symbol}%{{low:,.2f}}<br>"
+                f"Close: {currency_symbol}%{{close:,.2f}}<br><br>"
                 "<b>Interval &Delta;:</b> %{customdata[0]:+,.2f} (%{customdata[1]:+.2f}%)<extra></extra>"
             ),
         ), row=1, col=1)
@@ -113,8 +114,8 @@ def chart_portfolio_value(
             name="Portfolio Value",
             customdata=ohlc_df[["_open_to_close_usd", "_open_to_close_pct"]].fillna(0),
             hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Value: $%{y:,.2f}<br><br>"
+                f"<b>%{{x}}</b><br>"
+                f"Value: {currency_symbol}%{{y:,.2f}}<br><br>"
                 "<b>Interval &Delta;:</b> %{customdata[0]:+,.2f} (%{customdata[1]:+.2f}%)<extra></extra>"
             ),
         ), row=1, col=1)
@@ -129,7 +130,7 @@ def chart_portfolio_value(
             line=dict(color=C_AMBER, width=1.8, dash="dot"),
             name=f"MA({ma_window})",
             opacity=0.85,
-            hovertemplate=f"MA({ma_window}): $%{{y:,.2f}}<extra></extra>",
+            hovertemplate=f"MA({ma_window}): {currency_symbol}%{{y:,.2f}}<extra></extra>",
         ), row=1, col=1)
 
     # ── Net Cost Basis ────────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ def chart_portfolio_value(
             line=dict(color=C_BLUE, width=1.4, dash="longdash"),
             name="Net Cost Basis",
             opacity=0.6,
-            hovertemplate="Basis: %{y:,.2f}<extra></extra>",
+            hovertemplate=f"Basis: {currency_symbol}%{{y:,.2f}}<extra></extra>",
         ), row=1, col=1)
 
     # ── Alternate Currency Portfolio Value ────────────────────────────────────
@@ -182,7 +183,7 @@ def chart_portfolio_value(
         marker_opacity=0.55,
         marker_line_width=0,
         name="Unrealized Holdings",
-        hovertemplate="<b>%{x}</b><br>Holdings: $%{y:,.2f}<extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Holdings: {currency_symbol}%{{y:,.2f}}<extra></extra>",
     ), row=2, col=1)
 
     # Cash as a thin line overlay on sub-chart
@@ -192,17 +193,14 @@ def chart_portfolio_value(
         line=dict(color=C_PURPLE, width=1.5, dash="dot"),
         name="Cash Balance",
         opacity=0.7,
-        hovertemplate="Cash: $%{y:,.2f}<extra></extra>",
+        hovertemplate=f"Cash: {currency_symbol}%{{y:,.2f}}<extra></extra>",
     ), row=2, col=1)
 
-    # ── Layout ────────────────────────────────────────────────────────────────
-    currency_symbol = "€" if base_currency == "EUR" else "$"
-    
+    # currency_symbol already defined above
     fig.update_layout(
         **{k: v for k, v in BASE_LAYOUT.items()
            if k not in ("xaxis", "yaxis", "legend", "margin")},
         height=640,
-        margin=dict(l=16, r=30, t=60, b=20),
         title=dict(
             text=(
                 f"📈 Portfolio Value (Unrealized + Realized)  ·  "
@@ -224,6 +222,9 @@ def chart_portfolio_value(
             bgcolor="rgba(0,0,0,0)",
         ),
     )
+    # Separate call to avoid 'multiple values for keyword argument margin'
+    # that occurs when make_subplots pre-registers margin in the figure layout.
+    fig.update_layout(margin=dict(l=16, r=30, t=60, b=20))
 
     fig.update_xaxes(
         gridcolor=C_GRID,

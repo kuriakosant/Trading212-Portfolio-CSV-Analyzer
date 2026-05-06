@@ -333,29 +333,29 @@ def chart_monthly_summary(monthly_df: pd.DataFrame, base_currency: str = "USD") 
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Profit"],
         name="Profit", marker_color=C_GREEN, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Profit: <b>%{customdata[0]}{y:,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Profit: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Loss"],
         name="Loss", marker_color=C_RED, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Loss: <b>%{customdata[0]}{y:,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Loss: <b>{sym}%{{y:,.2f}}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Net P&L"],
         name="Net P&L",
         marker_color=[C_GREEN if v >= 0 else C_RED for v in monthly_df["Net P&L"]],
         marker_line_width=0,
-        hovertemplate=f"<b>%{x}</b><br>Net P&L: <b>{sym}%{y:+,.2f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Net P&L: <b>{sym}%{{y:+,.2f}}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df[f"Dividends ({base_currency})"],
         name="Dividends (€)", marker_color=C_PURPLE, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Dividends: <b>€%{y:.4f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Dividends: <b>{sym}%{{y:.4f}}</b><extra></extra>",
     ))
     fig.add_trace(go.Bar(
         x=monthly_df["Month"], y=monthly_df["Interest"],
         name="Interest", marker_color=C_TEAL, marker_line_width=0,
-        hovertemplate="<b>%{x}</b><br>Interest: <b>%{y:.4f}</b><extra></extra>",
+        hovertemplate=f"<b>%{{x}}</b><br>Interest: <b>{sym}%{{y:.4f}}</b><extra></extra>",
     ))
 
     fig.update_layout(barmode="group")
